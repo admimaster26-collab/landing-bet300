@@ -4076,6 +4076,288 @@ document.addEventListener("DOMContentLoaded",()=>{
   });
 })();
 </script>
+(function(){
 
+  function normPc(v){
+    v = String(v || "").trim().toUpperCase();
+    if(!v) return "";
+    v = v.replace(/\s+/g,"").replaceAll("-","").replaceAll("_","");
+    if(/^PC\d+$/.test(v)) return "P" + v.replace("PC","");
+    if(/^P\d+$/.test(v)) return v;
+    if(/^\d+$/.test(v)) return "P" + v;
+    if(v.includes("SANCHEZ")) return "P4";
+    return v;
+  }
+
+  function pcRow(row){
+    return normPc(
+      row?.pc_codigo ??
+      row?.PC_CODIGO ??
+      row?.pc ??
+      row?.PC ??
+      row?.codigo ??
+      row?.CODIGO ??
+      row?.oficina ??
+      row?.OFICINA ??
+      row?.pc_id ??
+      row?.PC_ID ??
+      ""
+    );
+  }
+
+  window.pcRowAdmin = pcRow;
+
+  window.pcSeleccionada = function(){
+    return normPc(document.getElementById("globalPc")?.value || "");
+  };
+
+  function pcMatches(row, pc){
+    pc = normPc(pc);
+    if(!pc) return true;
+    return pcRow(row) === pc;
+  }
+
+  window.pcMatchesAdmin = pcMatches;
+
+  function tokenAdmin(){
+    if(typeof adminSessionToken !== "undefined" && adminSessionToken) return adminSessionToken;
+    if(window.adminSessionToken) return window.adminSessionToken;
+    throw new Error("Sesión admin no iniciada.");
+  }
+
+  async function rpcRows(nombre, payload){
+    const {data,error} = await supabaseClient.rpc(nombre, payload || {});
+    if(error) throw error;
+    return data || [];
+  }
+
+  function setOperadores(rows){
+    try{ operadores = rows; }catch(e){}
+    window.operadores = rows;
+  }
+
+  function setBilleteras(rows){
+    try{ billeteras = rows; }catch(e){}
+    window.billeteras = rows;
+  }
+
+  function setSolicitudes(rows){
+    try{ solicitudes = rows; }catch(e){}
+    window.solicitudes = rows;
+  }
+
+  function setWorkerJobs(rows){
+    try{ workerJobs = rows; }catch(e){}
+    window.workerJobs = rows;
+  }
+
+  function setChats(rows){
+    try{ chatSesiones = rows; }catch(e){}
+    window.chatSesiones = rows;
+  }
+
+  function setMensajes(rows){
+    try{ chatMensajes = rows; }catch(e){}
+    window.chatMensajes = rows;
+  }
+
+  function setPcs(rows){
+    try{ pcs = rows; }catch(e){}
+    window.pcs = rows;
+  }
+
+  function setConfig(rows){
+    try{ configuracion = rows; }catch(e){}
+    window.configuracion = rows;
+  }
+
+  window.loadPcs = async function(render=true){
+    try{
+      const rows = await rpcRows("admin_get_pcs", {
+        p_session_token: tokenAdmin()
+      });
+
+      const normalizadas = (rows || []).map(p => ({
+        ...p,
+        pc_codigo: normPc(p.pc_codigo || p.codigo || p.PC || p.CODIGO),
+        codigo: normPc(p.codigo || p.pc_codigo || p.PC || p.CODIGO),
+        nombre_visible: p.nombre_visible || p.nombre || p.NOMBRE || p.pc_codigo || p.codigo,
+        nombre: p.nombre || p.nombre_visible || p.NOMBRE || p.pc_codigo || p.codigo
+      })).filter(p => p.pc_codigo && p.pc_codigo !== "TODOS");
+
+      setPcs(normalizadas);
+      if(render && typeof renderAll === "function") renderAll();
+    }catch(e){
+      console.error("loadPcs FIX", e);
+      setPcs([]);
+    }
+  };
+
+  window.loadBilleteras = async function(render=true){
+    try{
+      const pc = window.pcSeleccionada();
+      const rows = await rpcRows("admin_get_billeteras", {
+        p_session_token: tokenAdmin(),
+        p_pc_codigo: pc || null
+      });
+
+      const filtradas = (rows || [])
+        .map(b => ({...b, pc_codigo: pcRow(b) || normPc(b.pc_codigo)}))
+        .filter(b => pcMatches(b, pc));
+
+      setBilleteras(filtradas);
+      if(render && typeof renderAll === "function") renderAll();
+    }catch(e){
+      console.error("loadBilleteras FIX", e);
+      setBilleteras([]);
+      if(typeof toast === "function") toast("Error billeteras: " + (e.message || e), "err");
+    }
+  };
+
+  window.loadOperadores = async function(render=true){
+    try{
+      const pc = window.pcSeleccionada();
+      const rows = await rpcRows("admin_get_operadores", {
+        p_session_token: tokenAdmin(),
+        p_pc_codigo: pc || null
+      });
+
+      const filtradas = (rows || [])
+        .map(o => ({...o, pc_codigo: pcRow(o) || normPc(o.pc_codigo)}))
+        .filter(o => pcMatches(o, pc));
+
+      setOperadores(filtradas);
+      if(render && typeof renderAll === "function") renderAll();
+    }catch(e){
+      console.error("loadOperadores FIX", e);
+      setOperadores([]);
+      if(typeof toast === "function") toast("Error operadores: " + (e.message || e), "err");
+    }
+  };
+
+  window.loadSolicitudes = async function(render=true){
+    try{
+      const pc = window.pcSeleccionada();
+      const rows = await rpcRows("admin_get_solicitudes", {
+        p_session_token: tokenAdmin(),
+        p_pc_codigo: pc || null,
+        p_limit: 1500
+      });
+
+      const filtradas = (rows || [])
+        .map(s => ({...s, pc_codigo: pcRow(s) || normPc(s.pc_codigo)}))
+        .filter(s => pcMatches(s, pc));
+
+      setSolicitudes(filtradas);
+      if(render && typeof renderAll === "function") renderAll();
+    }catch(e){
+      console.error("loadSolicitudes FIX", e);
+      setSolicitudes([]);
+      if(typeof toast === "function") toast("Error solicitudes: " + (e.message || e), "err");
+    }
+  };
+
+  window.loadWorkerJobs = async function(render=true){
+    try{
+      const pc = window.pcSeleccionada();
+      const rows = await rpcRows("admin_get_worker_jobs", {
+        p_session_token: tokenAdmin(),
+        p_pc_codigo: pc || null,
+        p_limit: 1500
+      });
+
+      const filtradas = (rows || [])
+        .map(w => ({...w, pc_codigo: pcRow(w) || normPc(w.pc_codigo)}))
+        .filter(w => pcMatches(w, pc));
+
+      setWorkerJobs(filtradas);
+      if(render && typeof renderAll === "function") renderAll();
+    }catch(e){
+      console.error("loadWorkerJobs FIX", e);
+      setWorkerJobs([]);
+      if(typeof toast === "function") toast("Error worker: " + (e.message || e), "err");
+    }
+  };
+
+  window.loadChats = async function(render=true){
+    try{
+      const pc = window.pcSeleccionada();
+
+      const ses = await rpcRows("admin_get_chat_sesiones", {
+        p_session_token: tokenAdmin(),
+        p_pc_codigo: pc || null
+      });
+
+      const filtradas = (ses || [])
+        .map(c => ({...c, pc_codigo: pcRow(c) || normPc(c.pc_codigo)}))
+        .filter(c => pcMatches(c, pc));
+
+      setChats(filtradas);
+
+      try{
+        const ms = await rpcRows("admin_get_chat_mensajes", {
+          p_session_token: tokenAdmin(),
+          p_pc_codigo: pc || null
+        });
+        setMensajes(ms || []);
+      }catch(e2){
+        setMensajes([]);
+      }
+
+      if(render && typeof renderAll === "function") renderAll();
+    }catch(e){
+      console.error("loadChats FIX", e);
+      setChats([]);
+      setMensajes([]);
+    }
+  };
+
+  const oldLoadConfigFix = window.loadConfig;
+  window.loadConfig = async function(render=true){
+    try{
+      if(typeof oldLoadConfigFix === "function"){
+        await oldLoadConfigFix(false);
+      }
+      try{ window.configuracion = configuracion || window.configuracion || []; }catch(e){}
+      if(render && typeof renderAll === "function") renderAll();
+    }catch(e){
+      console.warn("loadConfig FIX", e);
+      setConfig([]);
+    }
+  };
+
+  window.reloadAll = async function(){
+    await Promise.allSettled([
+      window.loadPcs(false),
+      window.loadOperadores(false),
+      window.loadBilleteras(false),
+      window.loadConfig ? window.loadConfig(false) : Promise.resolve(),
+      window.loadSolicitudes(false),
+      window.loadChats(false),
+      window.loadWorkerJobs(false)
+    ]);
+
+    if(typeof fillPcSelects === "function") fillPcSelects();
+    if(typeof renderAll === "function") renderAll();
+
+    console.log("FIX reloadAll OK", {
+      pc: window.pcSeleccionada(),
+      billeteras: (window.billeteras || []).length,
+      operadores: (window.operadores || []).length,
+      solicitudes: (window.solicitudes || []).length,
+      workerJobs: (window.workerJobs || []).length
+    });
+  };
+
+  window.cambiarOficinaAdmin = async function(){
+    const pc = window.pcSeleccionada();
+    await window.reloadAll();
+    if(typeof toast === "function"){
+      toast(pc ? "Trabajando sobre " + pc : "Vista general de todas las oficinas", "okb");
+    }
+  };
+
+})();
+</script>
 </body>
 </html>
