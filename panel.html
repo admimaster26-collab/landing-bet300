@@ -5474,5 +5474,245 @@ async function cerrarSesion(){
 })();
 </script>
 
+<!-- =========================================================
+  PATCH FINO OPERATIVO · UX SIN ROMPER FUNCIONES ESTABLES
+  - Acción rápida limpia usuario/monto/obs y conserva tipo+billetera.
+  - Chat con panel fijo e imágenes ampliables con zoom.
+  - Layout compacto para ventanas angostas: acción rápida no se pierde.
+========================================================= -->
+<style>
+/* Compactación general para pantallas de oficina no fullscreen */
+@media (max-width: 1360px){
+  .layout{grid-template-columns:230px minmax(0,1fr)!important;}
+  .sidebar{padding:12px!important;}
+  .logo{width:125px!important;margin-bottom:12px!important;}
+  .card{padding:12px!important;margin-bottom:12px!important;}
+  .nav-btn{padding:10px 11px!important;margin-bottom:7px!important;font-size:13px!important;}
+  .main{padding:10px!important;overflow-x:hidden!important;}
+  .ops-title{font-size:22px!important;}
+  .ops-head{margin-bottom:8px!important;}
+  .ops-kpis{grid-template-columns:repeat(auto-fit,minmax(155px,1fr))!important;gap:9px!important;margin-bottom:10px!important;}
+  .ops-kpi{padding:10px!important;border-radius:13px!important;}
+  .ops-kpi-value{font-size:20px!important;}
+  .ops-wallet-strip{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))!important;gap:9px!important;}
+  .ops-wallet{padding:10px!important;border-radius:13px!important;}
+  .ops-wallet-saldo{font-size:19px!important;}
+  .ops-panel{padding:11px!important;border-radius:13px!important;margin-bottom:10px!important;}
+  .ops-panel-title{font-size:16px!important;margin-bottom:8px!important;}
+  .ops-main-table td,.ops-main-table th{font-size:11px!important;padding:7px!important;}
+  .ops-table-wrap{max-height:430px!important;}
+}
+@media (max-width: 1180px){
+  .layout{grid-template-columns:205px minmax(0,1fr)!important;}
+  .sidebar{padding:9px!important;}
+  .nav-btn{font-size:12px!important;padding:9px!important;}
+  .ops-grid{grid-template-columns:1fr!important;}
+  .ops-grid > div:nth-child(2){order:-1!important;}
+  .ops-manual-grid{display:grid!important;grid-template-columns:1.2fr .95fr .75fr 1fr 1fr!important;gap:7px!important;}
+  .ops-manual-grid label{font-size:12px!important;}
+  .ops-manual-grid input,.ops-manual-grid select{padding:8px!important;font-size:12px!important;}
+  .ops-alert{font-size:11px!important;padding:8px!important;margin-bottom:8px!important;}
+  .btn{padding:10px!important;}
+  .ops-compact-actions .mini-btn{padding:7px 8px!important;font-size:11px!important;}
+}
+@media (max-width: 980px){
+  .ops-manual-grid{grid-template-columns:1fr 1fr!important;}
+  .ops-grid > div:nth-child(2){position:relative!important;top:auto!important;}
+}
+
+/* Chat: lista y conversación independientes. El chat abierto queda quieto aunque bajes por chats viejos. */
+#viewChat .chat-layout{
+  height:calc(100vh - 92px)!important;
+  min-height:0!important;
+  overflow:hidden!important;
+  align-items:stretch!important;
+}
+#viewChat .chat-list{
+  height:100%!important;
+  min-height:0!important;
+  overflow:hidden!important;
+  display:flex!important;
+  flex-direction:column!important;
+}
+#viewChat #chatList{
+  overflow-y:auto!important;
+  min-height:0!important;
+  flex:1!important;
+}
+#viewChat .chat-panel{
+  height:100%!important;
+  min-height:0!important;
+  position:sticky!important;
+  top:8px!important;
+}
+#viewChat .chat-body{
+  flex:1!important;
+  min-height:0!important;
+  max-height:none!important;
+}
+.chat-bubble img,.chat-zoomable-img{cursor:zoom-in!important;}
+
+/* Modal de zoom para comprobantes/fotos del chat */
+#imageZoomOverlay{
+  position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.88);
+  display:none;align-items:center;justify-content:center;padding:18px;
+}
+#imageZoomOverlay.open{display:flex;}
+#imageZoomContent{position:relative;max-width:96vw;max-height:94vh;display:flex;flex-direction:column;align-items:center;gap:10px;}
+#imageZoomImg{max-width:92vw;max-height:82vh;border-radius:12px;box-shadow:0 18px 70px rgba(0,0,0,.65);transform-origin:center center;transition:transform .12s ease;}
+#imageZoomToolbar{display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;}
+#imageZoomToolbar button{width:auto!important;border:none;border-radius:10px;padding:9px 12px;font-weight:900;cursor:pointer;background:#1f2937;color:#fff;}
+#imageZoomToolbar .yellow{background:#fdb022;color:#111;}
+</style>
+<script>
+(function(){
+  if(window.__NODO_PATCH_UX_FINOS_20260521__) return;
+  window.__NODO_PATCH_UX_FINOS_20260521__ = true;
+
+  const $ = (id)=>document.getElementById(id);
+  const safeVal = (id)=>$(id)?.value || "";
+  const setVal = (id,v)=>{ const el=$(id); if(el) el.value = v; };
+  const hasOk = (html)=>String(html||"").toLowerCase().includes("ok-box") || String(html||"").toLowerCase().includes("job creado correctamente");
+  function restoreSelectValue(id, value){
+    const el=$(id); if(!el) return;
+    if(value && [...el.options].some(o=>String(o.value)===String(value))) el.value = value;
+  }
+
+  // Preservar selección de billetera al re-renderizar selects.
+  const oldRenderInicioWallet = window.renderWalletSelectWorkerInicio;
+  window.renderWalletSelectWorkerInicio = function(){
+    const prev = safeVal("manualWorkerBilleteraInicio");
+    const res = typeof oldRenderInicioWallet === "function" ? oldRenderInicioWallet.apply(this, arguments) : undefined;
+    if(safeVal("manualWorkerTipoInicio") !== "VALIDAR_USUARIO") restoreSelectValue("manualWorkerBilleteraInicio", prev);
+    return res;
+  };
+  try{ renderWalletSelectWorkerInicio = window.renderWalletSelectWorkerInicio; }catch(e){}
+
+  const oldRenderManualWallet = window.renderWalletSelectWorkerManual;
+  window.renderWalletSelectWorkerManual = function(){
+    const prev = safeVal("manualWorkerBilletera");
+    const res = typeof oldRenderManualWallet === "function" ? oldRenderManualWallet.apply(this, arguments) : undefined;
+    if(safeVal("manualWorkerTipo") !== "VALIDAR_USUARIO") restoreSelectValue("manualWorkerBilletera", prev);
+    return res;
+  };
+  try{ renderWalletSelectWorkerManual = window.renderWalletSelectWorkerManual; }catch(e){}
+
+  // Acción manual del módulo Worker: al enviar bien, limpia usuario/monto/obs y conserva tipo+billetera.
+  const oldCrearWorkerPanel = window.crearWorkerJobManualDesdePanel;
+  window.crearWorkerJobManualDesdePanel = async function(){
+    const tipo = safeVal("manualWorkerTipo");
+    const billetera = safeVal("manualWorkerBilletera");
+    const outBefore = $("manualWorkerResultado")?.innerHTML || "";
+    const res = typeof oldCrearWorkerPanel === "function" ? await oldCrearWorkerPanel.apply(this, arguments) : undefined;
+    const out = $("manualWorkerResultado")?.innerHTML || outBefore;
+    if(hasOk(out)){
+      setVal("manualWorkerUsuario", "");
+      setVal("manualWorkerMonto", "");
+      setVal("manualWorkerObs", "");
+      setVal("manualWorkerTipo", tipo);
+      setTimeout(()=>{
+        if(typeof window.renderWalletSelectWorkerManual === "function") window.renderWalletSelectWorkerManual();
+        if(tipo !== "VALIDAR_USUARIO") restoreSelectValue("manualWorkerBilletera", billetera);
+      }, 80);
+    }
+    return res;
+  };
+  try{ crearWorkerJobManualDesdePanel = window.crearWorkerJobManualDesdePanel; }catch(e){}
+
+  // Acción rápida del Inicio: misma regla, sin borrar tipo ni billetera elegida.
+  window.crearWorkerJobManualInicio = async function(){
+    const tipo = safeVal("manualWorkerTipoInicio");
+    const billetera = safeVal("manualWorkerBilleteraInicio");
+
+    setVal("manualWorkerUsuario", safeVal("manualWorkerUsuarioInicio"));
+    setVal("manualWorkerTipo", tipo);
+    setVal("manualWorkerMonto", safeVal("manualWorkerMontoInicio"));
+    setVal("manualWorkerBilletera", billetera);
+    setVal("manualWorkerObs", safeVal("manualWorkerObsInicio"));
+
+    if(typeof window.crearWorkerJobManualDesdePanel === "function"){
+      await window.crearWorkerJobManualDesdePanel();
+    }
+
+    const html = $("manualWorkerResultado")?.innerHTML || "";
+    setBox("manualWorkerResultadoInicio", html);
+
+    if(hasOk(html)){
+      setVal("manualWorkerUsuarioInicio", "");
+      setVal("manualWorkerMontoInicio", "");
+      setVal("manualWorkerObsInicio", "");
+      setVal("manualWorkerTipoInicio", tipo);
+      setTimeout(()=>{
+        if(typeof window.renderWalletSelectWorkerInicio === "function") window.renderWalletSelectWorkerInicio();
+        if(tipo !== "VALIDAR_USUARIO") restoreSelectValue("manualWorkerBilleteraInicio", billetera);
+      }, 100);
+    }
+
+    // Refresco suave: no pisa el formulario, solo cola/saldos por las funciones ya existentes.
+    setTimeout(()=>{ try{ if(typeof window.queueHeavy==="function") window.queueHeavy("accion_rapida"); }catch(e){} }, 350);
+    setTimeout(()=>{ try{ if(typeof window.cargarWorkerJobs==="function") window.cargarWorkerJobs(false); }catch(e){} }, 900);
+  };
+  try{ crearWorkerJobManualInicio = window.crearWorkerJobManualInicio; }catch(e){}
+
+  // Zoom de imágenes de chat: sirve para comprobantes recibidos o enviados.
+  function ensureImageZoom(){
+    if($("imageZoomOverlay")) return;
+    const div=document.createElement("div");
+    div.id="imageZoomOverlay";
+    div.innerHTML=`
+      <div id="imageZoomContent">
+        <img id="imageZoomImg" src="" alt="Imagen ampliada">
+        <div id="imageZoomToolbar">
+          <button type="button" onclick="window.__zoomChatImg(-0.25)">−</button>
+          <button type="button" onclick="window.__zoomChatImg(0.25)">+</button>
+          <button type="button" onclick="window.__zoomChatReset()">100%</button>
+          <button type="button" class="yellow" onclick="window.__closeChatZoom()">Cerrar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(div);
+    div.addEventListener("click", (ev)=>{ if(ev.target===div) window.__closeChatZoom(); });
+  }
+  let zoomScale=1;
+  window.__openChatZoom = function(src){
+    ensureImageZoom();
+    zoomScale=1;
+    const img=$("imageZoomImg");
+    img.src=src;
+    img.style.transform="scale(1)";
+    $("imageZoomOverlay").classList.add("open");
+  };
+  window.__closeChatZoom = function(){ const o=$("imageZoomOverlay"); if(o) o.classList.remove("open"); };
+  window.__zoomChatImg = function(delta){
+    const img=$("imageZoomImg"); if(!img) return;
+    zoomScale=Math.max(.5, Math.min(4, zoomScale + delta));
+    img.style.transform=`scale(${zoomScale})`;
+  };
+  window.__zoomChatReset = function(){ zoomScale=1; const img=$("imageZoomImg"); if(img) img.style.transform="scale(1)"; };
+  document.addEventListener("click", function(ev){
+    const img = ev.target && ev.target.closest ? ev.target.closest(".chat-bubble img, .chat-zoomable-img") : null;
+    if(img && img.src){ ev.preventDefault(); window.__openChatZoom(img.src); }
+  });
+  document.addEventListener("keydown", function(ev){ if(ev.key === "Escape") window.__closeChatZoom(); });
+
+  // Si el render viejo no marca imágenes, el click delegado igual funciona; esto solo agrega pista visual.
+  const oldRenderChat = window.renderChatMensajes;
+  window.renderChatMensajes = function(){
+    const res = typeof oldRenderChat === "function" ? oldRenderChat.apply(this, arguments) : undefined;
+    document.querySelectorAll(".chat-bubble img").forEach(img=>img.classList.add("chat-zoomable-img"));
+    return res;
+  };
+  try{ renderChatMensajes = window.renderChatMensajes; }catch(e){}
+
+  // Asegura layout compacto al entrar a Inicio/Chat sin tocar lógica de datos.
+  const oldMostrarVista = window.mostrarVista;
+  window.mostrarVista = function(vista){
+    const r = typeof oldMostrarVista === "function" ? oldMostrarVista.apply(this, arguments) : undefined;
+    if(String(vista).toLowerCase()==="chat") setTimeout(()=>document.querySelectorAll(".chat-bubble img").forEach(img=>img.classList.add("chat-zoomable-img")), 150);
+    return r;
+  };
+  try{ mostrarVista = window.mostrarVista; }catch(e){}
+})();
+</script>
+
 </body>
 </html>
