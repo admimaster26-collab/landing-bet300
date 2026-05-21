@@ -4359,5 +4359,139 @@ document.addEventListener("DOMContentLoaded",()=>{
 
 })();
 </script>
+
+<script>
+/* =========================================================
+   NODO ADMIN · FIX FINAL UNIFICADO PC/P4 + TOKEN + RENDERS
+   - Selector muestra PC4 - SANCHEZ pero filtra P4.
+   - Sin cargas antes del login.
+   - Sincroniza variables internas y window.*.
+========================================================= */
+(function(){
+  function normPc(v){
+    v=String(v||'').trim().toUpperCase().replace(/\s+/g,'').replaceAll('-','').replaceAll('_','');
+    if(!v) return '';
+    if(v==='TODOS'||v==='TODAS') return '';
+    if(/^PC\d+$/.test(v)) return 'P'+v.replace('PC','');
+    if(/^P\d+$/.test(v)) return v;
+    if(/^\d+$/.test(v)) return 'P'+v;
+    if(v.includes('SANCHEZ')) return 'P4';
+    return v;
+  }
+  function pcLabel(p){
+    const code=normPc(p?.pc_codigo||p?.codigo||p?.PC||p?.CODIGO||p);
+    const name=p?.nombre_visible||p?.nombre||p?.NOMBRE||p?.label||'';
+    if(code==='P4') return 'PC4 - SANCHEZ';
+    if(name && !['P1','P2','P3','P4','P5'].includes(String(name).toUpperCase())) return name;
+    return code ? code.replace(/^P/,'PC') : 'Todas las oficinas';
+  }
+  function rowPc(r){
+    return normPc(r?.pc_codigo ?? r?.PC_CODIGO ?? r?.pc ?? r?.PC ?? r?.codigo ?? r?.CODIGO ?? r?.oficina ?? r?.OFICINA ?? r?.pc_id ?? r?.PC_ID ?? '');
+  }
+  function selectedPc(){return normPc(document.getElementById('globalPc')?.value||'');}
+  function token(){
+    if(typeof adminSessionToken!=='undefined' && adminSessionToken) return adminSessionToken;
+    if(window.adminSessionToken) return window.adminSessionToken;
+    throw new Error('Sesión admin no iniciada. Ingresá usuario y clave.');
+  }
+  async function rpcRows(name,payload){
+    const {data,error}=await supabaseClient.rpc(name,payload||{});
+    if(error) throw error;
+    return Array.isArray(data)?data:(data?[data]:[]);
+  }
+  function setVar(name,rows){
+    try{ eval(name+' = rows'); }catch(e){}
+    window[name]=rows;
+  }
+  function safeSetHtml(id, html){const el=document.getElementById(id); if(el) el.innerHTML=html;}
+  function fillSelect(id, options, first){
+    const el=document.getElementById(id); if(!el) return;
+    const old=normPc(el.value);
+    el.innerHTML=(first||'')+options;
+    if(old && Array.from(el.options).some(o=>normPc(o.value)===old)) el.value=old;
+  }
+
+  window.nodoNormPc=normPc;
+  window.nodoAdminRowPc=rowPc;
+  window.nodoAdminSelectedPc=selectedPc;
+  window.requireAdminToken=function(){return token();};
+
+  window.loadPcs=async function(render=false){
+    try{
+      const rows=await rpcRows('admin_get_pcs',{p_session_token:token()});
+      const arr=(rows||[]).map(p=>{
+        const c=normPc(p.pc_codigo||p.codigo||p.PC||p.CODIGO);
+        return {...p, pc_codigo:c, codigo:c, nombre_visible:pcLabel({...p,pc_codigo:c}), nombre:pcLabel({...p,pc_codigo:c})};
+      }).filter(p=>p.pc_codigo);
+      if(!arr.some(p=>p.pc_codigo==='P4')) arr.push({pc_codigo:'P4',codigo:'P4',nombre:'PC4 - SANCHEZ',nombre_visible:'PC4 - SANCHEZ',activa:true,orden:4});
+      setVar('pcs',arr);
+      if(render) {fillPcSelects(); renderAll();}
+    }catch(e){console.error('loadPcs final',e); setVar('pcs',[]);}  
+  };
+
+  window.fillPcSelects=function(){
+    const base=(window.pcs||[]).length?window.pcs:[{pc_codigo:'P1',nombre:'PC1'},{pc_codigo:'P2',nombre:'PC2'},{pc_codigo:'P3',nombre:'PC3'},{pc_codigo:'P4',nombre:'PC4 - SANCHEZ'},{pc_codigo:'P5',nombre:'PC5'}];
+    const clean=[]; const seen=new Set();
+    base.forEach(p=>{const c=normPc(p.pc_codigo||p.codigo||p); if(!c||seen.has(c))return; seen.add(c); clean.push({...p,pc_codigo:c,codigo:c,nombre_visible:pcLabel({...p,pc_codigo:c}),nombre:pcLabel({...p,pc_codigo:c})});});
+    clean.sort((a,b)=>Number(a.orden||a.pc_codigo.replace('P','')||0)-Number(b.orden||b.pc_codigo.replace('P','')||0));
+    setVar('pcs',clean);
+    const opts=clean.map(p=>`<option value="${p.pc_codigo}">${pcLabel(p)}</option>`).join('');
+    const formFirst='<option value="">Seleccionar oficina</option>';
+    const filterFirst='<option value="">Todas las oficinas</option>';
+    ['op_pc_codigo','bi_pc_codigo','pc_codigo'].forEach(id=>fillSelect(id,opts,formFirst));
+    ['op_filter_pc','bi_filter_pc','wk_filter_pc','globalPc'].forEach(id=>fillSelect(id,opts,filterFirst));
+  };
+
+  async function loadByRpc(varName,rpcName,extra={}){
+    try{
+      const pc=selectedPc();
+      const rows=await rpcRows(rpcName,{p_session_token:token(),p_pc_codigo:pc||null,...extra});
+      const arr=(rows||[]).map(r=>({...r,pc_codigo:rowPc(r)||pc})).filter(r=>!pc||rowPc(r)===pc);
+      setVar(varName,arr);
+    }catch(e){console.error(rpcName,e); setVar(varName,[]); if(typeof toast==='function') toast('Error '+rpcName+': '+(e.message||e),'err');}
+  }
+  window.loadBilleteras=async function(render=false){await loadByRpc('billeteras','admin_get_billeteras'); if(render)renderAll();};
+  window.loadOperadores=async function(render=false){await loadByRpc('operadores','admin_get_operadores'); if(render)renderAll();};
+  window.loadSolicitudes=async function(render=false){await loadByRpc('solicitudes','admin_get_solicitudes',{p_limit:1500}); if(render)renderAll();};
+  window.loadWorkerJobs=async function(render=false){await loadByRpc('workerJobs','admin_get_worker_jobs',{p_limit:1500}); if(render)renderAll();};
+  window.loadChats=async function(render=false){
+    try{await loadByRpc('chatSesiones','admin_get_chat_sesiones');}
+    catch(e){setVar('chatSesiones',[])}
+    if(render)renderAll();
+  };
+  const oldLoadConfig=window.loadConfig;
+  window.loadConfig=async function(render=false){
+    try{ if(typeof oldLoadConfig==='function') await oldLoadConfig(false); try{window.configuracion=configuracion||window.configuracion||[]}catch(e){} }catch(e){console.warn('config',e)}
+    if(render)renderAll();
+  };
+
+  window.reloadAll=async function(){
+    await Promise.allSettled([loadPcs(false),loadOperadores(false),loadBilleteras(false),loadConfig(false),loadSolicitudes(false),loadChats(false),loadWorkerJobs(false)]);
+    fillPcSelects();
+    if(typeof renderAll==='function') renderAll();
+    console.log('ADMIN FINAL OK',{pc:selectedPc(),billeteras:(window.billeteras||[]).length,operadores:(window.operadores||[]).length,solicitudes:(window.solicitudes||[]).length,workerJobs:(window.workerJobs||[]).length});
+  };
+  window.cambiarOficinaAdmin=async function(){ await reloadAll(); if(typeof toast==='function') toast(selectedPc()?('Trabajando sobre '+pcLabel({pc_codigo:selectedPc()})):'Vista general de todas las oficinas','okb'); };
+
+  // Render filters compare normalized PC.
+  const oldRenderBilleteras=window.renderBilleteras;
+  window.renderBilleteras=function(){
+    const q=typeof norm==='function'?norm(val('bi_search')):(val('bi_search')||'').toLowerCase(), banco=val('bi_filter_banco'), pc=normPc(val('bi_filter_pc')), act=val('bi_filter_activa');
+    const rows=(window.billeteras||billeteras||[]).filter(b=>(!q||norm([b.id,b.pc_codigo,b.nombre_visible,b.titular,b.alias,b.cbu,b.banco,b.estado].join(' ')).includes(q))&&(!banco||b.banco===banco)&&(!pc||rowPc(b)===pc)&&(act===''||String(!!b.activa)===act));
+    try{billeteras=rows}catch(e){}
+    const keep=window.billeteras; window.billeteras=rows; try{ oldRenderBilleteras ? oldRenderBilleteras() : null; }catch(e){console.error(e)} window.billeteras=keep;
+  };
+  const oldRenderOperadores=window.renderOperadores;
+  window.renderOperadores=function(){
+    const pc=normPc(val('op_filter_pc'));
+    const all=window.operadores||operadores||[];
+    const filtered=pc?all.filter(o=>rowPc(o)===pc):all;
+    try{operadores=filtered}catch(e){}
+    try{oldRenderOperadores?oldRenderOperadores():null}catch(e){console.error(e)}
+    try{operadores=all}catch(e){}
+  };
+})();
+</script>
+
 </body>
 </html>
