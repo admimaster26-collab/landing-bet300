@@ -943,5 +943,34 @@ document.addEventListener("paste",e=>{const items=e.clipboardData?.items||[];for
 setTimeout(()=>{$("chatLiteInput")?.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();enviarChatLite()}})},0)
 function iniciarRealtimeChatLanding(){return}
 </script>
+
+<style>
+.transfer-lite-card{border:1px solid rgba(212,175,55,.45);background:linear-gradient(180deg,rgba(212,175,55,.12),rgba(15,23,42,.96));border-radius:16px;padding:13px;min-width:240px;max-width:320px;box-shadow:0 10px 24px rgba(0,0,0,.28)}.transfer-lite-title{font-weight:900;color:#f7d774;margin-bottom:10px;font-size:15px}.transfer-lite-label{font-size:11px;color:#94a3b8;font-weight:800;margin-bottom:4px}.transfer-lite-value{font-weight:900;margin-bottom:8px;word-break:break-all;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.08);padding:8px;border-radius:10px}.transfer-lite-copy{width:100%;margin:0 0 10px 0;padding:9px 10px;border-radius:10px;border:0;background:#f7d774;color:#111827;font-weight:900;cursor:pointer;box-shadow:none;font-size:13px}.transfer-lite-note{margin-top:10px;color:#f7d774;font-size:12px;line-height:1.35;font-weight:700}
+</style>
+<script>
+/* =========================================================
+   LANDING CHAT · FIX TARJETAS COPIABLES
+========================================================= */
+(function(){
+  function esc(s){return typeof escapeHtml==='function'?escapeHtml(s):String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));}
+  function parseCard(raw){
+    raw=String(raw||'').trim(); let payload=null;
+    if(raw.startsWith('::TRANSFER_CARD::')) payload=raw.replace('::TRANSFER_CARD::','').trim();
+    if(raw.startsWith('TRANSFER_CARD:')) payload=raw.replace('TRANSFER_CARD:','').trim();
+    if(payload){try{return JSON.parse(payload)}catch(e){}}
+    if(/Billetera\s*:/i.test(raw)&&(/Alias\s*:/i.test(raw)||/CBU\/CVU\s*:/i.test(raw))){const g=re=>{const m=raw.match(re);return m?m[1].trim():''}; return {nombre_visible:g(/Billetera\s*:\s*([^\n]+)/i),titular:g(/Titular\s*:\s*([^\n]+)/i),alias:g(/Alias\s*:\s*([^\n]+)/i),cbu:g(/CBU\/CVU\s*:\s*([^\n]+)/i),banco:g(/Banco\s*:\s*([^\n]+)/i)};}
+    return null;
+  }
+  window.copiarDesdeTarjeta=window.copiarDesdeTarjeta||function(id,msg){const el=document.getElementById(id);const t=(el?.innerText||'').trim(); if(!t){alert('No hay dato para copiar.');return;} navigator.clipboard.writeText(t).then(()=>{const a=document.createElement('div');a.innerText=msg||'Copiado';a.style.cssText='position:fixed;left:50%;bottom:95px;transform:translateX(-50%);background:rgba(22,163,74,.96);color:white;padding:10px 14px;border-radius:999px;font-weight:900;z-index:99999;box-shadow:0 10px 30px rgba(0,0,0,.35)';document.body.appendChild(a);setTimeout(()=>a.remove(),1400)}).catch(()=>alert('No se pudo copiar. Mantené presionado el dato y copialo manualmente.'));};
+  window.renderMensajeChatLite=function(texto){
+    const card=parseCard(texto);
+    if(!card) return esc(texto||'').replace(/\n/g,'<br>');
+    const nombre=card.nombre_visible||card.nombre||'Datos para transferir', titular=card.titular||'', alias=card.alias||'', cbu=card.cbu||card.cvu||card.cvu_cbu||'', banco=card.banco||card.tipo||'';
+    const aid='alias_'+Math.random().toString(36).slice(2), cid='cbu_'+Math.random().toString(36).slice(2);
+    return `<div class="transfer-lite-card"><div class="transfer-lite-title">💳 ${esc(nombre)}</div>${alias?`<div class="transfer-lite-label">ALIAS</div><div id="${aid}" class="transfer-lite-value">${esc(alias)}</div><button class="transfer-lite-copy" onclick="copiarDesdeTarjeta('${aid}','Alias copiado')">Copiar alias</button>`:''}${cbu?`<div class="transfer-lite-label">CBU / CVU</div><div id="${cid}" class="transfer-lite-value">${esc(cbu)}</div><button class="transfer-lite-copy" onclick="copiarDesdeTarjeta('${cid}','CBU/CVU copiado')">Copiar CBU / CVU</button>`:''}${titular?`<div class="transfer-lite-label">TITULAR</div><div style="font-weight:900;margin-bottom:9px;word-break:break-word">${esc(titular)}</div>`:''}${banco?`<div style="font-size:12px;color:#cbd5e1;font-weight:800;margin-top:6px">Banco: ${esc(banco)}</div>`:''}<div class="transfer-lite-note">Cuando realices la transferencia, enviá el comprobante por acá.</div></div>`;
+  };
+})();
+</script>
+
 </body>
 </html>
