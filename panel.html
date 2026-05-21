@@ -971,6 +971,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbwvZGRAOxBLNIQ52mlED6Zl
 const SUPABASE_URL = "https://pjvvyvfcwjoocjqvdror.supabase.co";
 const SUPABASE_KEY = "sb_publishable_NYqRoKptTgcL90VAVF2kqA_Gl06mEUF";
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+window.supabaseClient = supabaseClient; // FIX: permite que los módulos de Realtime usen el cliente global
 
 let operador=null, pcOperativa=null, panelSessionToken="";
 const LS_OPERADOR="nodo_operador_lite";
