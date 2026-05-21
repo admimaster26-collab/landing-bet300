@@ -550,7 +550,9 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script>
 /* =========================================================
    OPERATIVO CHAT NOTIFY V8 · ESTABLE SIN REDECLARAR
    - Sin let/const globales duplicados.
@@ -4346,15 +4348,15 @@ async function cerrarSesion(){
     if(!pc || !window.supabaseClient) return;
 
     try{
-      const {data,error} = await supabaseClient
-        .from("worker_agent_saldos_estado")
-        .select("*")
-        .eq("pc_codigo", pc)
-        .order("updated_at", {ascending:false})
-        .limit(1);
+      // Usamos RPC security definer para evitar bloqueos de RLS/anon.
+      // Devuelve la última fila de saldo para la PC, aunque haya más de un worker_id.
+      const {data,error} = await supabaseClient.rpc("panel_operativo_get_saldo_agente_estado", {
+        p_session_token: token(),
+        p_pc_codigo: pc
+      });
 
       if(error){
-        console.warn("Saldo agente realtime no disponible:", error.message || error);
+        console.warn("Saldo agente realtime RPC no disponible:", error.message || error);
         renderAgentSaldo(null);
         return;
       }
@@ -4401,13 +4403,8 @@ async function cerrarSesion(){
 
   function refreshSaldo(payload){
     try{
-      const pc = pcActual();
-      const row = payload && (payload.new || payload.record || payload.old);
-      if(row && normPc(row.pc_codigo) === pc){
-        renderAgentSaldo(row);
-      }else{
-        cargarSaldoAgenteRealtime();
-      }
+      // El evento Realtime es solo disparador. La verdad la trae la RPC.
+      cargarSaldoAgenteRealtime();
       if(typeof renderInicio === "function") renderInicio();
       if(typeof renderCentroOperativo === "function") renderCentroOperativo();
     }catch(e){console.warn("RT saldo", e);}
@@ -4465,7 +4462,7 @@ async function cerrarSesion(){
       // Respaldo liviano, no polling agresivo.
       STATE.safetyTimer = setInterval(()=>{
         cargarSaldoAgenteRealtime();
-      }, 60000);
+      }, 15000);
     }
   };
 
@@ -4510,7 +4507,7 @@ async function cerrarSesion(){
     // Respaldo liviano cada 60s por si el navegador duerme el socket.
     if(!timersIniciados){
       timersIniciados = true;
-      setInterval(()=>{ try{ cargarSaldoAgenteRealtime(); }catch(e){} }, 60000);
+      setInterval(()=>{ try{ cargarSaldoAgenteRealtime(); }catch(e){} }, 15000);
     }
   };
 
