@@ -522,6 +522,16 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
             <button class="btn btn-yellow" onclick="guardarAjusteBilletera()">Guardar ajuste de billetera</button>
             <div id="ajusteBilleteraResultado" style="margin-top:12px"></div>
           </div>
+          <div class="ops-panel">
+            <div class="ops-panel-title">🔁 Movimiento entre billeteras</div>
+            <div class="small" style="margin-bottom:10px">Mueve saldo interno entre billeteras de la misma PC. No genera job de Agentes.</div>
+            <label>Desde billetera</label><select id="transferBilleteraOrigen"></select>
+            <label>Hacia billetera</label><select id="transferBilleteraDestino"></select>
+            <label>Monto</label><input id="transferBilleteraMonto" type="number" min="1" placeholder="ej: 10000">
+            <label>Motivo</label><input id="transferBilleteraMotivo" placeholder="obligatorio">
+            <button class="btn btn-green" onclick="guardarTransferenciaBilletera()">Mover saldo</button>
+            <div id="transferBilleteraResultado" style="margin-top:12px"></div>
+          </div>
         </div>
       </section>
 
@@ -550,7 +560,8 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
 /* =========================================================
    OPERATIVO CHAT NOTIFY V8 · ESTABLE SIN REDECLARAR
    - Sin let/const globales duplicados.
@@ -5020,6 +5031,446 @@ async function cerrarSesion(){
 
   setSyncChip('Sync activo', 'ok');
   setTimeout(()=>flushQueued('startup'), 1500);
+})();
+</script>
+
+
+<script>
+/* =========================================================
+   NODO OPERATIVO · FINAL SYNC + MOVIMIENTOS V1
+   - Realtime real: solicitudes, worker_jobs, chat_sesiones, chat_mensajes,
+     worker_agent_saldos_estado y movimientos/saldos si existen.
+   - Sync inteligente: no pisa formularios mientras el operador escribe.
+   - Ajuste de billeteras + transferencia interna entre billeteras.
+   - Refuerza render de inicio, worker, ajustes y movimientos.
+========================================================= */
+(function(){
+  if(window.__NODO_OPERATIVO_FINAL_SYNC_MOVS_V1__) return;
+  window.__NODO_OPERATIVO_FINAL_SYNC_MOVS_V1__ = true;
+
+  const S = {
+    channel:null,
+    timers:{},
+    lastRun:{},
+    editingUntil:0,
+    pendingHeavy:false,
+    status:"INIT",
+    min:{
+      saldo:1800,
+      worker:2200,
+      solicitudes:2500,
+      chat:3500,
+      billeteras:4500,
+      todo:4000
+    }
+  };
+
+  function n(v){ return String(v||"").trim(); }
+  function norm(v){ return n(v).toUpperCase(); }
+  function esc(v){
+    if(typeof escapeHtml === "function") return escapeHtml(v);
+    return String(v||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
+  }
+  function attr(v){
+    if(typeof escapeAttr === "function") return escapeAttr(v);
+    return esc(v);
+  }
+  function pc(){
+    try{return norm(window.pcOperativa || pcOperativa || localStorage.getItem("nodo_pc_operativa_lite") || "");}
+    catch(e){return "";}
+  }
+  function tok(){
+    try{return requireSessionToken();}catch(e){}
+    try{return window.panelSessionToken || panelSessionToken || "";}catch(e){return "";}
+  }
+  function pesos(v){
+    if(typeof money === "function") return money(v);
+    return Number(v||0).toLocaleString("es-AR",{style:"currency",currency:"ARS",maximumFractionDigits:0});
+  }
+  function fecha(v){
+    if(typeof formatFecha === "function") return formatFecha(v);
+    if(!v) return "";
+    try{return new Date(v).toLocaleString("es-AR");}catch(e){return String(v||"");}
+  }
+  function box(id, html){
+    if(typeof setBox === "function") return setBox(id, html);
+    const el=document.getElementById(id); if(el) el.innerHTML=html;
+  }
+  function notify(msg,type="green"){ try{ if(typeof toast==="function") toast(msg,type); }catch(e){} }
+
+  function isEditable(el){
+    if(!el) return false;
+    const tag=String(el.tagName||"").toLowerCase();
+    if(["input","textarea","select"].includes(tag)) return true;
+    return !!el.isContentEditable || !!el.closest?.("input,textarea,select,[contenteditable='true']");
+  }
+  function editing(){
+    return isEditable(document.activeElement) || Date.now() < S.editingUntil;
+  }
+  function touchEditing(){ S.editingUntil = Date.now() + 2600; setSyncStatus("Sync pausado mientras escribís","pause"); }
+  ["focusin","input","keydown","change"].forEach(ev=>{
+    document.addEventListener(ev, e=>{ if(isEditable(e.target)) touchEditing(); }, true);
+  });
+  document.addEventListener("focusout", e=>{
+    if(isEditable(e.target)){
+      S.editingUntil = Date.now() + 900;
+      setTimeout(()=>{ if(!editing()) flushHeavy("fin_edicion"); }, 1000);
+    }
+  }, true);
+
+  function setSyncStatus(text, mode="ok"){
+    let chip=document.getElementById("syncStatusFinalChip");
+    const info=document.getElementById("operadorInfo");
+    if(!chip && info){
+      chip=document.createElement("div");
+      chip.id="syncStatusFinalChip";
+      chip.style.cssText="margin-top:8px;display:inline-block;border-radius:999px;padding:5px 9px;font-size:11px;font-weight:900;";
+      info.appendChild(chip);
+    }
+    if(!chip) return;
+    chip.textContent=text;
+    chip.style.background = mode==="pause" ? "#3b2606" : mode==="warn" ? "#3a1515" : "#11371f";
+    chip.style.color = mode==="warn" ? "#ffd0d0" : mode==="pause" ? "#ffd98f" : "#b9f7cb";
+  }
+
+  function should(key, ms, force=false){
+    if(force){ S.lastRun[key]=Date.now(); return true; }
+    const last=S.lastRun[key]||0;
+    if(Date.now()-last < ms) return false;
+    S.lastRun[key]=Date.now();
+    return true;
+  }
+
+  async function callIf(name, arg, force=false){
+    const fn=window[name];
+    if(typeof fn!=="function") return null;
+    return await fn(arg, force);
+  }
+
+  async function lightSaldo(force=false){
+    if(!should("saldo", S.min.saldo, force)) return;
+    try{
+      if(typeof window.cargarSaldoAgenteRealtime === "function"){
+        await window.cargarSaldoAgenteRealtime(force);
+      }else if(window.supabaseClient && tok() && pc()){
+        const {data,error}=await supabaseClient.rpc("panel_operativo_get_saldo_agente_estado", {
+          p_session_token: tok(),
+          p_pc_codigo: pc()
+        });
+        if(!error && typeof window.renderAgentSaldoRealtime === "function"){
+          window.renderAgentSaldoRealtime(Array.isArray(data)?data[0]:data);
+        }
+      }
+    }catch(e){ console.warn("lightSaldo", e); }
+  }
+
+  async function refreshWorker(force=false){
+    if(!should("worker", S.min.worker, force)) return;
+    if(typeof cargarWorkerJobs === "function") await cargarWorkerJobs(false);
+    try{ if(typeof renderCentroOperativo==="function") renderCentroOperativo(); }catch(e){}
+    try{ if(typeof renderWorkerJobs==="function") renderWorkerJobs(); }catch(e){}
+  }
+
+  async function refreshSolicitudes(force=false){
+    if(!should("solicitudes", S.min.solicitudes, force)) return;
+    if(typeof cargarSolicitudes === "function") await cargarSolicitudes(true);
+    try{ if(typeof renderSolicitudes==="function") renderSolicitudes(); }catch(e){}
+    try{ if(typeof renderCentroOperativo==="function") renderCentroOperativo(); }catch(e){}
+  }
+
+  async function refreshChat(force=false){
+    if(!should("chat", S.min.chat, force)) return;
+    if(typeof cargarChats === "function") await cargarChats(true);
+    try{ if(window.chatActualId && typeof cargarChatActual==="function") await cargarChatActual(false); }catch(e){}
+    try{ if(typeof renderInicio==="function") renderInicio(); }catch(e){}
+  }
+
+  async function refreshBilleteras(force=false){
+    if(!should("billeteras", S.min.billeteras, force)) return;
+    if(typeof cargarBilleteras === "function") await cargarBilleteras(false);
+    try{ if(typeof cargarSaldosOperativos==="function") await cargarSaldosOperativos(true); }catch(e){}
+    try{ renderSelectsAjustesFinal(); }catch(e){}
+    try{ renderMovimientosBilleteraFinal(); }catch(e){}
+    try{ if(typeof renderCentroOperativo==="function") renderCentroOperativo(); }catch(e){}
+  }
+
+  function queueHeavy(reason="rt"){
+    S.pendingHeavy=true;
+    clearTimeout(S.timers.heavy);
+    S.timers.heavy=setTimeout(()=>flushHeavy(reason), 450);
+  }
+
+  async function flushHeavy(reason="manual"){
+    if(editing()){
+      S.pendingHeavy=true;
+      setSyncStatus("Cambios recibidos · esperando fin de edición","pause");
+      clearTimeout(S.timers.heavy);
+      S.timers.heavy=setTimeout(()=>flushHeavy(reason), 1200);
+      return;
+    }
+    if(!S.pendingHeavy && reason!=="manual" && reason!=="startup") return;
+    S.pendingHeavy=false;
+    setSyncStatus("Sincronizando...","ok");
+    await Promise.allSettled([
+      lightSaldo(true),
+      refreshWorker(reason==="manual"),
+      refreshSolicitudes(reason==="manual"),
+      refreshBilleteras(false)
+    ]);
+    try{ if(typeof renderInicio==="function") renderInicio(); }catch(e){}
+    try{ if(typeof renderCentroOperativo==="function") renderCentroOperativo(); }catch(e){}
+    setSyncStatus("Sync activo","ok");
+  }
+
+  // Throttle de funciones pesadas llamadas por timers viejos.
+  function wrapLoader(name, key, minMs){
+    const old=window[name];
+    if(typeof old!=="function" || old.__wrappedFinal) return;
+    const wrapped=async function(...args){
+      const force=args.some(x=>x===true || x==="force" || x==="manual");
+      if(editing() && !force){
+        queueHeavy(name+"_editing");
+        return {ok:true, skipped:true};
+      }
+      if(!should(key, minMs, force)) return {ok:true, skipped:true};
+      return await old.apply(this,args);
+    };
+    wrapped.__wrappedFinal=true;
+    window[name]=wrapped;
+    try{ eval(name+" = window[name]"); }catch(e){}
+  }
+
+  function installThrottle(){
+    wrapLoader("cargarSolicitudes","solicitudes",S.min.solicitudes);
+    wrapLoader("cargarWorkerJobs","worker",S.min.worker);
+    wrapLoader("cargarChats","chat",S.min.chat);
+    wrapLoader("cargarBilleteras","billeteras",S.min.billeteras);
+    wrapLoader("cargarSaldosOperativos","saldos",3000);
+  }
+
+  function installRealtime(){
+    if(!window.supabaseClient || !pc()) return;
+    try{ if(S.channel) supabaseClient.removeChannel(S.channel); }catch(e){}
+    const name="nodo_operativo_final_"+pc()+"_"+Date.now();
+    const ch=supabaseClient.channel(name);
+
+    ch.on("postgres_changes",{event:"*",schema:"public",table:"solicitudes",filter:"pc_codigo=eq."+pc()},()=>{
+      queueHeavy("rt_solicitudes");
+    });
+    ch.on("postgres_changes",{event:"*",schema:"public",table:"worker_jobs",filter:"pc_codigo=eq."+pc()},()=>{
+      lightSaldo(false);
+      queueHeavy("rt_worker");
+    });
+    ch.on("postgres_changes",{event:"*",schema:"public",table:"worker_agent_saldos_estado",filter:"pc_codigo=eq."+pc()},()=>{
+      lightSaldo(true);
+    });
+    ch.on("postgres_changes",{event:"*",schema:"public",table:"chat_sesiones",filter:"pc_codigo=eq."+pc()},()=>{
+      refreshChat(false);
+    });
+    ch.on("postgres_changes",{event:"*",schema:"public",table:"chat_mensajes"},()=>{
+      refreshChat(false);
+    });
+
+    // Si estas tablas existen y están publicadas, refresca billeteras/movimientos.
+    ["billeteras","billetera_movimientos","movimientos_billetera","fichas_movimientos"].forEach(tbl=>{
+      try{
+        ch.on("postgres_changes",{event:"*",schema:"public",table:tbl},()=>{
+          queueHeavy("rt_"+tbl);
+        });
+      }catch(e){}
+    });
+
+    ch.subscribe(status=>{
+      const ok=status==="SUBSCRIBED";
+      setSyncStatus(ok ? "Realtime conectado" : "Realtime "+status, ok ? "ok" : "pause");
+      S.status=status;
+      if(ok){ setTimeout(()=>flushHeavy("startup"), 500); }
+    });
+    S.channel=ch;
+  }
+
+  // Ajustes y transferencias entre billeteras.
+  function walletList(){
+    const arr = (saldosOperativos?.billeteras || billeteras || billeterasTodas || []);
+    return (arr||[]).map(b=>({
+      id: b.id || b.ID_BILLETERA || b.billetera_id || b.ID,
+      nombre: b.nombre_visible || b.NOMBRE_VISIBLE || b.BILLETERA_NOMBRE || b.nombre || "Billetera",
+      tipo: b.banco || b.TIPO || b.BANCO || "",
+      saldo: Number(b.saldo ?? b.SALDO ?? b.saldo_actual ?? b.monto ?? 0),
+      activa: String(b.ACTIVA ?? b.activa ?? "SI").toUpperCase() !== "NO"
+    })).filter(b=>b.id);
+  }
+
+  function optsWallet(selected=""){
+    const rows=walletList();
+    return rows.map(b=>`<option value="${attr(b.id)}" ${String(selected)===String(b.id)?"selected":""}>${esc(b.nombre)}${b.tipo?" · "+esc(b.tipo):""} · ${pesos(b.saldo)}</option>`).join("");
+  }
+
+  window.renderSelectsAjustesFinal = function(){
+    ["ajusteBilleteraId","transferBilleteraOrigen","transferBilleteraDestino","manualWorkerBilletera","manualWorkerBilleteraInicio","chatWalletSelect"].forEach(id=>{
+      const el=document.getElementById(id);
+      if(!el) return;
+      const old=el.value;
+      const first = id.includes("manualWorker") ? `<option value="">${id.includes("Inicio")?"No aplica / seleccionar":"Sin billetera / solo validar"}</option>` : "";
+      el.innerHTML = first + optsWallet(old);
+      if(old) el.value=old;
+    });
+  };
+
+  const oldRenderSelects = window.renderSelectsAjustes;
+  window.renderSelectsAjustes = function(){
+    try{ if(typeof oldRenderSelects==="function") oldRenderSelects(); }catch(e){}
+    renderSelectsAjustesFinal();
+    renderMovimientosBilleteraFinal();
+  };
+
+  window.renderMovimientosBilleteraFinal = function(){
+    let el=document.getElementById("movimientosBilleteraBoxFinal");
+    const ajustes=document.getElementById("viewAjustes");
+    if(!ajustes) return;
+    if(!el){
+      el=document.createElement("div");
+      el.id="movimientosBilleteraBoxFinal";
+      el.className="ops-panel";
+      ajustes.appendChild(el);
+    }
+    const movs=(saldosOperativos?.movimientos_billetera || saldosOperativos?.movimientos || saldosOperativos?.ultimos_movimientos || []).slice(0,50);
+    el.innerHTML=`
+      <div class="ops-panel-title">📒 Historial de movimientos</div>
+      ${movs.length ? `<div class="table-wrap" style="max-height:360px"><table><thead><tr><th>Fecha</th><th>Billetera</th><th>Tipo</th><th>Monto</th><th>Motivo</th></tr></thead><tbody>
+        ${movs.map(m=>{
+          const signo=Number(m.signo || m.SIGNO || 0);
+          const monto=Math.abs(Number(m.monto || m.MONTO || 0));
+          return `<tr>
+            <td>${esc(fecha(m.created_at || m.fecha || m.FECHA || ""))}</td>
+            <td>${esc(m.billetera_nombre || m.nombre_visible || m.BILLETERA_NOMBRE || "-")}</td>
+            <td>${esc(m.tipo_movimiento || m.tipo || m.TIPO || "-")}</td>
+            <td style="font-weight:900;color:${signo<0?"#ffd0d0":"#b9f7cb"}">${signo<0?"-":"+"} ${pesos(monto)}</td>
+            <td>${esc(m.motivo || m.observacion || m.MOTIVO || "-")}</td>
+          </tr>`;
+        }).join("")}
+      </tbody></table></div>` : `<div class="alert-box">Sin movimientos visibles todavía.</div>`}
+    `;
+  };
+
+  window.guardarTransferenciaBilletera = async function(){
+    const origen=Number(document.getElementById("transferBilleteraOrigen")?.value || 0);
+    const destino=Number(document.getElementById("transferBilleteraDestino")?.value || 0);
+    const monto=Number(document.getElementById("transferBilleteraMonto")?.value || 0);
+    const motivo=n(document.getElementById("transferBilleteraMotivo")?.value || "");
+    const out="transferBilleteraResultado";
+
+    if(!origen || !destino || !monto || monto<=0 || !motivo){
+      box(out, `<div class="err-box">Origen, destino, monto y motivo son obligatorios.</div>`);
+      return;
+    }
+    if(origen===destino){
+      box(out, `<div class="err-box">La billetera origen y destino no pueden ser la misma.</div>`);
+      return;
+    }
+
+    box(out, `<div class="alert-box">Moviendo saldo...</div>`);
+
+    let data=null, error=null;
+    try{
+      ({data,error}=await supabaseClient.rpc("panel_operativo_transferir_billetera", {
+        p_session_token: tok(),
+        p_billetera_origen_id: origen,
+        p_billetera_destino_id: destino,
+        p_monto: monto,
+        p_motivo: motivo,
+        p_operador: operador?.usuario || operador?.nombre || "",
+        p_pc_codigo: pc()
+      }));
+    }catch(e){
+      error=e;
+    }
+
+    if(error){
+      box(out, `<div class="err-box">${esc(error.message || error)}</div>`);
+      return;
+    }
+
+    const r=Array.isArray(data)?data[0]:data;
+    if(r && r.ok===false){
+      box(out, `<div class="err-box">${esc(r.mensaje || r.error || "No se pudo transferir.")}</div>`);
+      return;
+    }
+
+    box(out, `<div class="ok-box">Movimiento realizado correctamente.</div>`);
+    document.getElementById("transferBilleteraMonto").value="";
+    document.getElementById("transferBilleteraMotivo").value="";
+    await refreshBilleteras(true);
+    await flushHeavy("manual");
+  };
+
+  const oldGuardarBilletera = window.guardarAjusteBilletera;
+  window.guardarAjusteBilletera = async function(){
+    if(typeof oldGuardarBilletera === "function") await oldGuardarBilletera();
+    setTimeout(()=>refreshBilleteras(true), 600);
+  };
+  try{ guardarAjusteBilletera = window.guardarAjusteBilletera; }catch(e){}
+
+  const oldGuardarFichas = window.guardarAjusteFichas;
+  window.guardarAjusteFichas = async function(){
+    if(typeof oldGuardarFichas === "function") await oldGuardarFichas();
+    setTimeout(()=>flushHeavy("manual"), 600);
+  };
+  try{ guardarAjusteFichas = window.guardarAjusteFichas; }catch(e){}
+
+  // Refresh manual final: fuerza todo, pero respeta edición si no es botón manual.
+  const oldRefresh=window.refrescarTodo;
+  window.refrescarTodo = async function(showToast=true){
+    if(editing() && showToast!==true){
+      queueHeavy("refresh_editing");
+      return {ok:true, skipped:true};
+    }
+    S.lastRun={};
+    if(typeof oldRefresh==="function") await oldRefresh.apply(this, arguments);
+    await lightSaldo(true);
+    await refreshBilleteras(true);
+    try{ renderSelectsAjustesFinal(); renderMovimientosBilleteraFinal(); }catch(e){}
+    if(showToast) notify("Panel actualizado","green");
+  };
+  try{ refrescarTodo = window.refrescarTodo; }catch(e){}
+
+  // Finalizar login: conserva lógica vieja y agrega Realtime final.
+  const oldFinalizar=window.finalizarLogin;
+  window.finalizarLogin = function(...args){
+    const r = typeof oldFinalizar==="function" ? oldFinalizar.apply(this,args) : null;
+    setTimeout(()=>{
+      installThrottle();
+      installRealtime();
+      lightSaldo(true);
+      queueHeavy("startup");
+      renderSelectsAjustesFinal();
+      renderMovimientosBilleteraFinal();
+    }, 700);
+    return r;
+  };
+  try{ finalizarLogin = window.finalizarLogin; }catch(e){}
+
+  // CSS complementario
+  const style=document.createElement("style");
+  style.textContent=`
+    #syncStatusFinalChip{border:1px solid rgba(255,255,255,.08)}
+    #transferBilleteraOrigen,#transferBilleteraDestino{background:#fff;color:#111}
+    #movimientosBilleteraBoxFinal table th,#movimientosBilleteraBoxFinal table td{font-size:12px}
+    .wallet-required{outline:2px solid #f04438!important}
+  `;
+  document.head.appendChild(style);
+
+  document.addEventListener("DOMContentLoaded", ()=>{
+    setTimeout(()=>{
+      installThrottle();
+      if(!document.getElementById("loginView")?.classList.contains("hidden")){
+        setSyncStatus("Esperando login","pause");
+      }else{
+        installRealtime();
+        queueHeavy("startup");
+      }
+    }, 900);
+  });
 })();
 </script>
 
