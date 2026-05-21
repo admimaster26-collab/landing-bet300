@@ -550,8 +550,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
 /* =========================================================
    OPERATIVO CHAT NOTIFY V8 · ESTABLE SIN REDECLARAR
    - Sin let/const globales duplicados.
@@ -4780,296 +4779,247 @@ async function cerrarSesion(){
 </script>
 
 
+
 <script>
 /* =========================================================
-   NODO OPERATIVO · SYNC DEFINITIVO V21
-   Objetivo: que NO haya que tocar "Actualizar".
-   - Realtime escucha tablas críticas.
-   - Cada evento dispara recarga por RPC segura.
-   - Respaldo liviano por intervalos para sockets dormidos.
-   - Actualiza saldo agente, worker, solicitudes, chat y centro operativo.
+   NODO PANEL · SYNC INTELIGENTE SIN INTERRUMPIR ACCIÓN RÁPIDA
+   - Evita refrescos pesados mientras el operador escribe/selecciona.
+   - Aplica throttle a cargas que los timers viejos llaman muy seguido.
+   - Realtime sigue activo, pero si estás editando cola actualizaciones.
+   - El saldo agente se puede actualizar liviano sin tocar formularios.
 ========================================================= */
 (function(){
-  if(window.__NODO_SYNC_DEFINITIVO_V21__) return;
-  window.__NODO_SYNC_DEFINITIVO_V21__ = true;
+  if(window.__NODO_SMART_SYNC_INPUT_SAFE__) return;
+  window.__NODO_SMART_SYNC_INPUT_SAFE__ = true;
 
-  const ST = {
-    channel:null,
-    started:false,
-    timers:[],
-    debounces:{},
-    lastSyncAt:0,
-    lastSaldoAt:0,
-    lastWorkerAt:0,
-    lastSolicitudesAt:0,
-    lastChatAt:0
+  const CFG = {
+    solicitudesMs: 6000,
+    workerMs: 4500,
+    chatsMs: 9000,
+    billeterasMs: 15000,
+    saldosMs: 3500,
+    quietAfterInputMs: 2500,
+    queuedDelayMs: 350
   };
 
-  function normPc(v){
-    v = String(v || '').trim().toUpperCase().replace(/\s+/g,'').replaceAll('-','').replaceAll('_','');
-    if(/^PC\d+$/.test(v)) return 'P' + v.replace('PC','');
-    if(/^\d+$/.test(v)) return 'P' + v;
-    return v;
+  const st = {
+    editing:false,
+    lastInputAt:0,
+    pending:false,
+    pendingReason:'',
+    lastRun:{},
+    queuedTimer:null
+  };
+
+  function now(){ return Date.now(); }
+  function isEditableEl(el){
+    if(!el) return false;
+    const tag = String(el.tagName || '').toLowerCase();
+    if(['input','textarea','select'].includes(tag)) return true;
+    if(el.isContentEditable) return true;
+    return !!el.closest?.('input,textarea,select,[contenteditable="true"]');
   }
 
-  function pc(){
-    try{return normPc(window.pcOperativa || pcOperativa || localStorage.getItem('nodo_pc_operativa_lite') || '');}
-    catch(e){return normPc(localStorage.getItem('nodo_pc_operativa_lite') || '');}
+  function isUserEditing(){
+    const active = document.activeElement;
+    if(st.editing || isEditableEl(active)) return true;
+    return (now() - st.lastInputAt) < CFG.quietAfterInputMs;
   }
 
-  function token(){
-    try{ if(typeof requireSessionToken === 'function') return requireSessionToken(); }catch(e){}
-    try{return window.panelSessionToken || panelSessionToken || localStorage.getItem('nodo_panel_session_token_lite') || '';}
-    catch(e){return localStorage.getItem('nodo_panel_session_token_lite') || '';}
-  }
-
-  function log(){ try{ console.log.apply(console, ['[NODO SYNC]'].concat([].slice.call(arguments))); }catch(e){} }
-  function warn(){ try{ console.warn.apply(console, ['[NODO SYNC]'].concat([].slice.call(arguments))); }catch(e){} }
-
-  function debounce(key, fn, ms){
-    clearTimeout(ST.debounces[key]);
-    ST.debounces[key] = setTimeout(fn, ms || 250);
-  }
-
-  function renderTodoBasico(){
-    try{ if(typeof renderInicio === 'function') renderInicio(); }catch(e){}
-    try{ if(typeof renderCentroOperativo === 'function') renderCentroOperativo(); }catch(e){}
-    try{ if(typeof renderWorkerJobs === 'function') renderWorkerJobs(); }catch(e){}
-    try{ if(typeof renderSolicitudes === 'function') renderSolicitudes(); }catch(e){}
-    try{ if(typeof renderChatList === 'function') renderChatList(); }catch(e){}
-    try{ if(typeof updateBadgeChatLateralV8 === 'function') updateBadgeChatLateralV8(); }catch(e){}
-  }
-
-  async function cargarSaldoSeguro(){
-    if(!pc() || !token() || !window.supabaseClient) return false;
-    try{
-      if(typeof window.cargarSaldoAgenteRealtime === 'function'){
-        await window.cargarSaldoAgenteRealtime();
-      }else{
-        const {data,error} = await supabaseClient.rpc('panel_operativo_get_saldo_agente_estado', {
-          p_session_token: token(),
-          p_pc_codigo: pc()
-        });
-        if(error) throw error;
-        const row = Array.isArray(data) ? (data[0] || null) : (data || null);
-        if(typeof window.renderAgentSaldoRealtime === 'function') window.renderAgentSaldoRealtime(row);
-      }
-      ST.lastSaldoAt = Date.now();
-      return true;
-    }catch(e){ warn('saldo', e.message || e); return false; }
-  }
-
-  async function cargarWorkerSeguro(){
-    if(!pc() || !token()) return false;
-    try{
-      if(typeof cargarWorkerJobs === 'function') await cargarWorkerJobs(false);
-      ST.lastWorkerAt = Date.now();
-      return true;
-    }catch(e){ warn('worker', e.message || e); return false; }
-  }
-
-  async function cargarSolicitudesSeguro(){
-    if(!pc() || !token()) return false;
-    try{
-      if(typeof cargarSolicitudes === 'function') await cargarSolicitudes(true);
-      ST.lastSolicitudesAt = Date.now();
-      return true;
-    }catch(e){ warn('solicitudes', e.message || e); return false; }
-  }
-
-  async function cargarChatsSeguro(){
-    if(!pc() || !token()) return false;
-    try{
-      if(typeof cargarChats === 'function') await cargarChats(true);
-      if(window.chatActualId && typeof cargarChatActual === 'function') await cargarChatActual(false);
-      ST.lastChatAt = Date.now();
-      return true;
-    }catch(e){ warn('chat', e.message || e); return false; }
-  }
-
-  async function syncTodo(motivo){
-    if(!pc() || !token()) return;
-    ST.lastSyncAt = Date.now();
-    log('syncTodo', motivo || 'manual', pc());
-    await Promise.allSettled([
-      cargarSaldoSeguro(),
-      cargarWorkerSeguro(),
-      cargarSolicitudesSeguro(),
-      cargarChatsSeguro()
-    ]);
-    renderTodoBasico();
-  }
-
-  async function syncOperacion(motivo){
-    if(!pc() || !token()) return;
-    log('syncOperacion', motivo || 'evento', pc());
-    await Promise.allSettled([
-      cargarSaldoSeguro(),
-      cargarWorkerSeguro(),
-      cargarSolicitudesSeguro()
-    ]);
-    renderTodoBasico();
-  }
-
-  function dispararOperacion(motivo){
-    debounce('operacion', async ()=>{
-      await syncOperacion(motivo);
-      setTimeout(()=>syncOperacion((motivo||'evento') + ' +700ms'), 700);
-      setTimeout(()=>syncOperacion((motivo||'evento') + ' +1800ms'), 1800);
-    }, 120);
-  }
-
-  function dispararChat(motivo){
-    debounce('chat', async ()=>{
-      await cargarChatsSeguro();
-      renderTodoBasico();
-    }, 180);
-  }
-
-  function ensureChip(){
-    let chip = document.getElementById('realtimeStatusChip');
+  function setSyncChip(text, cls='warn'){
+    let chip = document.getElementById('smartSyncStatusChip');
     const info = document.getElementById('operadorInfo');
     if(!chip && info){
       chip = document.createElement('div');
-      chip.id = 'realtimeStatusChip';
-      chip.style.marginTop = '8px';
+      chip.id = 'smartSyncStatusChip';
+      chip.style.cssText = 'margin-top:8px;display:inline-block;border-radius:999px;padding:5px 9px;font-size:11px;font-weight:900;';
       info.appendChild(chip);
     }
-    return chip;
-  }
-
-  function setChip(text, ok){
-    const chip = ensureChip();
     if(!chip) return;
     chip.textContent = text;
-    chip.className = 'rt-status ' + (ok ? 'ok' : 'warn');
+    if(cls === 'ok') chip.style.background = '#11371f', chip.style.color = '#b9f7cb';
+    else if(cls === 'pause') chip.style.background = '#3b2606', chip.style.color = '#ffd98f';
+    else chip.style.background = '#16235f', chip.style.color = '#cbd5ff';
   }
 
-  function iniciarRealtimeDefinitivo(){
-    const p = pc();
-    if(!p || !window.supabaseClient){
-      setTimeout(iniciarRealtimeDefinitivo, 700);
-      return;
-    }
+  function markEditing(){
+    st.editing = true;
+    st.lastInputAt = now();
+    setSyncChip('Sync pausado mientras escribís', 'pause');
+  }
 
+  function markMaybeDone(){
+    st.editing = false;
+    st.lastInputAt = now();
+    setTimeout(()=>{
+      if(!isUserEditing()){
+        setSyncChip('Sync activo', 'ok');
+        flushQueued('fin_edicion');
+      }
+    }, CFG.quietAfterInputMs + 120);
+  }
+
+  document.addEventListener('focusin', e=>{ if(isEditableEl(e.target)) markEditing(); }, true);
+  document.addEventListener('input', e=>{ if(isEditableEl(e.target)) markEditing(); }, true);
+  document.addEventListener('keydown', e=>{ if(isEditableEl(e.target)) markEditing(); }, true);
+  document.addEventListener('change', e=>{ if(isEditableEl(e.target)) { st.lastInputAt = now(); queueLightRefresh('change'); } }, true);
+  document.addEventListener('focusout', e=>{ if(isEditableEl(e.target)) markMaybeDone(); }, true);
+
+  function shouldRun(key, minMs, force){
+    if(force) { st.lastRun[key] = now(); return true; }
+    const last = st.lastRun[key] || 0;
+    if(now() - last < minMs) return false;
+    st.lastRun[key] = now();
+    return true;
+  }
+
+  function queueLightRefresh(reason='queued'){
+    st.pending = true;
+    st.pendingReason = reason;
+    clearTimeout(st.queuedTimer);
+    st.queuedTimer = setTimeout(()=>flushQueued(reason), CFG.queuedDelayMs);
+  }
+
+  async function flushQueued(reason='flush'){
+    if(isUserEditing()) return;
+    if(!st.pending && !['manual','fin_edicion','startup'].includes(reason)) return;
+    st.pending = false;
+    setSyncChip('Sync actualizando...', 'info');
     try{
-      if(ST.channel){
-        supabaseClient.removeChannel(ST.channel);
-        ST.channel = null;
-      }
-    }catch(e){}
-
-    setChip('Realtime iniciando', false);
-
-    const ch = supabaseClient.channel('nodo_sync_v21_' + p + '_' + Date.now());
-
-    ch.on('postgres_changes', {event:'*', schema:'public', table:'worker_agent_saldos_estado', filter:'pc_codigo=eq.' + p}, payload=>{
-      log('RT saldo', payload.eventType, payload.new || payload.old);
-      dispararOperacion('saldo realtime');
-    });
-
-    ch.on('postgres_changes', {event:'*', schema:'public', table:'worker_jobs', filter:'pc_codigo=eq.' + p}, payload=>{
-      log('RT worker_jobs', payload.eventType, payload.new || payload.old);
-      dispararOperacion('worker realtime');
-    });
-
-    ch.on('postgres_changes', {event:'*', schema:'public', table:'solicitudes', filter:'pc_codigo=eq.' + p}, payload=>{
-      log('RT solicitudes', payload.eventType, payload.new || payload.old);
-      dispararOperacion('solicitudes realtime');
-    });
-
-    ch.on('postgres_changes', {event:'*', schema:'public', table:'chat_sesiones', filter:'pc_codigo=eq.' + p}, payload=>{
-      log('RT chat_sesiones', payload.eventType);
-      dispararChat('chat_sesiones realtime');
-    });
-
-    ch.on('postgres_changes', {event:'*', schema:'public', table:'chat_mensajes'}, payload=>{
-      log('RT chat_mensajes', payload.eventType);
-      dispararChat('chat_mensajes realtime');
-    });
-
-    ch.subscribe(status=>{
-      log('Realtime status', status);
-      setChip(status === 'SUBSCRIBED' ? 'Realtime conectado' : 'Realtime ' + status, status === 'SUBSCRIBED');
-      if(status === 'SUBSCRIBED'){
-        syncTodo('conexión realtime');
-      }
-    });
-
-    ST.channel = ch;
+      await Promise.allSettled([
+        window.__orig_cargarSaldoAgenteRealtime?.(),
+        runOriginal('worker', false, true),
+        runOriginal('solicitudes', true, true)
+      ]);
+      try{ if(typeof renderCentroOperativo === 'function') renderCentroOperativo(); }catch(e){}
+      try{ if(typeof renderInicio === 'function') renderInicio(); }catch(e){}
+    }catch(e){ console.warn('flushQueued', e); }
+    setSyncChip('Sync activo', 'ok');
   }
 
-  function iniciarRespaldos(){
-    if(ST.started) return;
-    ST.started = true;
+  function normalizeForce(args){
+    // En este panel muchas funciones reciben silencioso/showToast. Consideramos true como llamada manual/importante.
+    return args.some(x => x === true || x === 'force' || x === 'manual');
+  }
 
-    // Respaldo corto para operaciones: mantiene worker/saldo/solicitudes al día aunque Realtime tarde.
-    ST.timers.push(setInterval(()=>{
-      if(!pc() || !token()) return;
-      syncOperacion('respaldo 2s');
-    }, 2000));
+  async function runOriginal(key, arg0, force=false){
+    const fn = {
+      solicitudes: window.__orig_cargarSolicitudes,
+      worker: window.__orig_cargarWorkerJobs,
+      chats: window.__orig_cargarChats,
+      billeteras: window.__orig_cargarBilleteras,
+      saldos: window.__orig_cargarSaldosOperativos,
+    }[key];
+    if(typeof fn !== 'function') return null;
+    return await fn(arg0);
+  }
 
-    // Respaldo de chat más suave.
-    ST.timers.push(setInterval(()=>{
-      if(!pc() || !token()) return;
-      cargarChatsSeguro().then(renderTodoBasico);
-    }, 4500));
-
-    // Si el socket se cae o entra en estado raro, intentamos recrearlo.
-    ST.timers.push(setInterval(()=>{
-      if(!pc() || !token() || !window.supabaseClient) return;
-      const chip = document.getElementById('realtimeStatusChip');
-      const txt = String(chip?.textContent || '');
-      if(!ST.channel || (!txt.includes('conectado') && !txt.includes('SUBSCRIBED'))){
-        iniciarRealtimeDefinitivo();
+  function installThrottle(name, key, minMs, allowWhileEditing=false){
+    const orig = window[name];
+    if(typeof orig !== 'function') return;
+    window['__orig_'+name] = window['__orig_'+name] || orig;
+    window[name] = async function(...args){
+      const force = normalizeForce(args);
+      if(isUserEditing() && !force && !allowWhileEditing){
+        queueLightRefresh(key + '_while_editing');
+        return {ok:true, skipped:true, reason:'editing'};
       }
-    }, 12000));
+      if(!shouldRun(key, minMs, force)){
+        return {ok:true, skipped:true, reason:'throttle'};
+      }
+      return await window['__orig_'+name].apply(this, args);
+    };
   }
 
-  function arrancarDefinitivo(){
-    if(!pc() || !token()) return;
-    iniciarRealtimeDefinitivo();
-    iniciarRespaldos();
-    setTimeout(()=>syncTodo('arranque +300'), 300);
-    setTimeout(()=>syncTodo('arranque +1500'), 1500);
+  // Guardamos originales para poder ejecutar cuando corresponde.
+  if(typeof window.cargarSolicitudes === 'function') window.__orig_cargarSolicitudes = window.__orig_cargarSolicitudes || window.cargarSolicitudes;
+  if(typeof window.cargarWorkerJobs === 'function') window.__orig_cargarWorkerJobs = window.__orig_cargarWorkerJobs || window.cargarWorkerJobs;
+  if(typeof window.cargarChats === 'function') window.__orig_cargarChats = window.__orig_cargarChats || window.cargarChats;
+  if(typeof window.cargarBilleteras === 'function') window.__orig_cargarBilleteras = window.__orig_cargarBilleteras || window.cargarBilleteras;
+  if(typeof window.cargarSaldosOperativos === 'function') window.__orig_cargarSaldosOperativos = window.__orig_cargarSaldosOperativos || window.cargarSaldosOperativos;
+  if(typeof window.cargarSaldoAgenteRealtime === 'function') window.__orig_cargarSaldoAgenteRealtime = window.__orig_cargarSaldoAgenteRealtime || window.cargarSaldoAgenteRealtime;
+
+  installThrottle('cargarSolicitudes', 'solicitudes', CFG.solicitudesMs, false);
+  installThrottle('cargarWorkerJobs', 'worker', CFG.workerMs, false);
+  installThrottle('cargarChats', 'chats', CFG.chatsMs, false);
+  installThrottle('cargarBilleteras', 'billeteras', CFG.billeterasMs, false);
+  installThrottle('cargarSaldosOperativos', 'saldos', CFG.saldosMs, true);
+
+  if(typeof window.cargarSaldoAgenteRealtime === 'function'){
+    const origSaldo = window.cargarSaldoAgenteRealtime;
+    window.__orig_cargarSaldoAgenteRealtime = window.__orig_cargarSaldoAgenteRealtime || origSaldo;
+    window.cargarSaldoAgenteRealtime = async function(...args){
+      // El saldo es liviano: lo dejamos pasar, pero con throttle para no saturar.
+      const force = normalizeForce(args);
+      if(!shouldRun('saldoAgente', CFG.saldosMs, force)) return {ok:true, skipped:true, reason:'throttle'};
+      return await window.__orig_cargarSaldoAgenteRealtime.apply(this, args);
+    };
   }
 
-  const refrescarAnterior = window.refrescarTodo;
-  window.refrescarTodo = async function(showToast=true){
-    try{
-      if(typeof refrescarAnterior === 'function') await refrescarAnterior(false);
-    }catch(e){ warn('refrescarAnterior', e.message || e); }
-    await syncTodo('botón actualizar');
-    if(showToast && typeof toast === 'function') toast('Panel actualizado', 'green');
-  };
-  try{ refrescarTodo = window.refrescarTodo; }catch(e){}
+  // En Realtime: si estás escribiendo, no renderiza la cola encima del operador: deja pendiente.
+  const prevRefreshWorker = window.refreshWorker;
+  if(typeof prevRefreshWorker === 'function'){
+    window.refreshWorker = function(...args){
+      if(isUserEditing()) return queueLightRefresh('rt_worker');
+      return prevRefreshWorker.apply(this, args);
+    };
+  }
 
-  const finalizarAnterior = window.finalizarLogin;
-  window.finalizarLogin = async function(guardar=true){
-    if(typeof finalizarAnterior === 'function'){
-      await finalizarAnterior(guardar);
-    }
-    setTimeout(arrancarDefinitivo, 250);
-  };
-  try{ finalizarLogin = window.finalizarLogin; }catch(e){}
+  // Botón Actualizar: siempre fuerza. Timers viejos quedan amortiguados por throttles.
+  if(typeof window.refrescarTodo === 'function'){
+    const oldRefresh = window.refrescarTodo;
+    window.__orig_refrescarTodo = window.__orig_refrescarTodo || oldRefresh;
+    window.refrescarTodo = async function(showToast=true){
+      const manual = showToast === true;
+      if(isUserEditing() && !manual){
+        queueLightRefresh('refresh_while_editing');
+        return {ok:true, skipped:true};
+      }
+      try{
+        // Forzamos fechas para que no bloquee el throttle si el usuario tocó Actualizar.
+        if(manual){ st.lastRun = {}; }
+        const r = await oldRefresh.apply(this, arguments);
+        try{ await window.__orig_cargarSaldoAgenteRealtime?.(); }catch(e){}
+        return r;
+      }catch(e){ console.warn('refrescarTodo smart', e); throw e; }
+    };
+  }
 
-  const manualPanelAnterior = window.crearWorkerJobManualDesdePanel;
-  window.crearWorkerJobManualDesdePanel = async function(){
-    if(typeof manualPanelAnterior === 'function') await manualPanelAnterior();
-    dispararOperacion('acción rápida panel');
-  };
+  // Acción rápida: durante el envío se bloquean refrescos pesados; al terminar hace refresh controlado.
+  async function wrapAction(fnName){
+    const old = window[fnName];
+    if(typeof old !== 'function') return;
+    window['__orig_'+fnName] = window['__orig_'+fnName] || old;
+    window[fnName] = async function(...args){
+      st.editing = true;
+      setSyncChip('Enviando orden al worker...', 'pause');
+      try{
+        const r = await old.apply(this, args);
+        st.editing = false;
+        st.lastInputAt = 0;
+        // Refresh escalonado, pero no continuo.
+        setTimeout(()=>flushQueued('manual'), 300);
+        setTimeout(()=>flushQueued('manual'), 1400);
+        setTimeout(()=>flushQueued('manual'), 3200);
+        return r;
+      }finally{
+        setTimeout(()=>{ st.editing=false; setSyncChip('Sync activo','ok'); }, 900);
+      }
+    };
+  }
+  wrapAction('crearWorkerJobManualInicio');
+  wrapAction('crearWorkerJobManualDesdePanel');
 
-  const manualInicioAnterior = window.crearWorkerJobManualInicio;
-  window.crearWorkerJobManualInicio = async function(){
-    if(typeof manualInicioAnterior === 'function') await manualInicioAnterior();
-    dispararOperacion('acción rápida inicio');
-  };
+  // Instala un refresco inteligente propio, más suave, por si el socket no avisa.
+  if(!window.__NODO_SMART_SYNC_TIMER__){
+    window.__NODO_SMART_SYNC_TIMER__ = setInterval(()=>{
+      if(isUserEditing()) return queueLightRefresh('smart_timer_editing');
+      flushQueued('smart_timer');
+    }, 5000);
+  }
 
-  window.NODO_SYNC_DEBUG = {syncTodo, syncOperacion, cargarSaldoSeguro, cargarWorkerSeguro, cargarSolicitudesSeguro, cargarChatsSeguro, iniciarRealtimeDefinitivo};
-
-  document.addEventListener('DOMContentLoaded', ()=>{
-    setTimeout(arrancarDefinitivo, 1000);
-  });
+  setSyncChip('Sync activo', 'ok');
+  setTimeout(()=>flushQueued('startup'), 1500);
 })();
 </script>
 
