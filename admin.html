@@ -1485,7 +1485,7 @@ const TABLES={operadores:"operadores",billeteras:"billeteras",pcs:"pcs",config:"
 let operadores=[],billeteras=[],pcs=[],configuracion=[],solicitudes=[],chatSesiones=[],chatMensajes=[],workerJobs=[],workerLogs=[];
 const $=id=>document.getElementById(id);
 
-document.addEventListener("DOMContentLoaded",()=>{if($("operadorForm")){$("operadorForm").addEventListener("submit",saveOperador);}$("billeteraForm").addEventListener("submit",saveBilletera);$("pcForm").addEventListener("submit",savePc);$("cfgForm").addEventListener("submit",saveCfg);reloadAll();});
+document.addEventListener("DOMContentLoaded",()=>{if($("operadorForm")){$("operadorForm").addEventListener("submit",saveOperador);}if($("billeteraForm"))$("billeteraForm").addEventListener("submit",saveBilletera);if($("pcForm"))$("pcForm").addEventListener("submit",savePc);if($("cfgForm"))$("cfgForm").addEventListener("submit",saveCfg); /* reloadAll se ejecuta recién después del login admin */ });
 
 function showSection(name){document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));document.querySelectorAll(".navBtn").forEach(b=>b.classList.remove("active"));$("section-"+name).classList.add("active");document.querySelector(`[data-section="${name}"]`)?.classList.add("active");const t={dashboard:["Dashboard","Resumen general navegable por oficina."],metricas:["Métricas","Aprobación rápida, respuesta de chat y rendimiento por operador/PC."],worker:["Worker","Cola de automatización, logs, errores y reintentos."],operadores:["Operadores","Crear, editar, activar, desactivar o eliminar operadores."],billeteras:["Billeteras","Administrar cuentas, estados, prioridad, selección manual e integración Mercado Pago."],pcs:["PCs","Administrar catálogo de PCs."],config:["Configuración","Parámetros internos del sistema."]};$("pageTitle").textContent=t[name][0];$("pageSub").textContent=t[name][1];}
 
@@ -3814,6 +3814,265 @@ document.addEventListener("DOMContentLoaded",()=>{
 
   document.addEventListener('DOMContentLoaded',()=>{
     setTimeout(()=>{ try{ window.fillPcSelects && window.fillPcSelects(); }catch(e){} },700);
+  });
+})();
+</script>
+
+
+<script>
+/* =========================================================
+   ADMIN PATCH FINAL · SESIÓN + FILTROS P1/P2/P3/P4/P5
+   Corrige:
+   - No carga RPCs antes de iniciar sesión.
+   - Evita "Sesión admin no iniciada" en consola.
+   - Mantiene PC4 - SANCHEZ visible, pero filtra por P4.
+   - Admin general puede ver todas o filtrar por oficina.
+========================================================= */
+(function(){
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[c])); }
+
+  function getTokenSafe(){
+    return String(window.adminSessionToken || window.NODO_ADMIN_SESSION_MEMORY || localStorage.getItem("nodo_admin_session_token_final_v3") || "").trim();
+  }
+
+  window.requireAdminToken = function(){
+    const t = getTokenSafe();
+    if(!t) throw new Error("Sesión admin no iniciada. Ingresá usuario y clave.");
+    return t;
+  };
+
+  function normPc(code){
+    let v = String(code || "").trim().toUpperCase();
+    if(!v || v === "TODOS" || v === "TODAS" || v === "TODAS LAS OFICINAS") return "";
+    v = v.replace(/\s+/g,"").replace(/-/g,"").replace(/_/g,"");
+    if(/^PC\d+$/.test(v)) return "P" + v.replace("PC","");
+    if(/^P\d+$/.test(v)) return v;
+    if(/^\d+$/.test(v)) return "P" + v;
+    return v;
+  }
+
+  function pcLabel(code){
+    const c = normPc(code);
+    const fromTable = (window.pcs || []).find(p => normPc(p.codigo || p.pc_codigo || p.nombre || p.nombre_visible) === c);
+    if(fromTable){
+      const name = String(fromTable.nombre || fromTable.nombre_visible || "").trim();
+      if(name) return name;
+    }
+    if(c === "P4") return "PC4 - SANCHEZ";
+    if(/^P\d+$/.test(c)) return "PC" + c.replace("P","");
+    return c || "Todas las oficinas";
+  }
+
+  window.normPcAdmin = normPc;
+  window.pcLabelAdmin = pcLabel;
+  window.ofiLabelAdmin = pcLabel;
+
+  function adminScopePc(){
+    const s = window.adminScope || null;
+    if(s && s.puede_todas === false && s.pc_codigo) return normPc(s.pc_codigo);
+    return "";
+  }
+
+  window.pcSeleccionada = function(){
+    return adminScopePc() || normPc(($("globalPc") || {}).value || "");
+  };
+
+  function pcMatches(rowPc, selectedPc){
+    const sel = normPc(selectedPc);
+    if(!sel) return true;
+    return normPc(rowPc) === sel;
+  }
+
+  function pcNum(c){
+    const n = parseInt(String(normPc(c)).replace(/\D/g,""),10);
+    return Number.isFinite(n) ? n : 999;
+  }
+
+  function collectPcs(){
+    const raw = [
+      ...(window.pcs || []).map(p => p.codigo || p.pc_codigo || p.nombre || p.nombre_visible),
+      ...(window.billeteras || []).map(b => b.pc_codigo),
+      ...(window.operadores || []).map(o => o.pc_codigo),
+      ...(window.solicitudes || []).map(s => s.pc_codigo),
+      ...(window.workerJobs || []).map(w => w.pc_codigo),
+      "P1","P2","P3","P4","P5"
+    ].map(normPc).filter(Boolean);
+
+    return [...new Set(raw)].sort((a,b)=>pcNum(a)-pcNum(b) || a.localeCompare(b));
+  }
+
+  window.fillPcSelects = function(){
+    let cods = collectPcs();
+    const forced = adminScopePc();
+    if(forced) cods = [forced];
+
+    const formOpts = ['<option value="">Seleccionar oficina</option>']
+      .concat(cods.map(c => `<option value="${esc(c)}">${esc(pcLabel(c))}</option>`)).join("");
+
+    const filterOpts = (forced ? "" : '<option value="">Todas las oficinas</option>')
+      + cods.map(c => `<option value="${esc(c)}">${esc(pcLabel(c))}</option>`).join("");
+
+    ["op_pc_codigo","bi_pc_codigo"].forEach(id=>{
+      const el=$(id); if(!el) return;
+      const old=normPc(el.value);
+      el.innerHTML=formOpts;
+      el.value = forced || (cods.includes(old) ? old : "");
+      el.disabled=!!forced;
+    });
+
+    ["op_filter_pc","bi_filter_pc","globalPc","wk_filter_pc"].forEach(id=>{
+      const el=$(id); if(!el) return;
+      const old=normPc(el.value);
+      el.innerHTML=filterOpts;
+      el.value = forced || (cods.includes(old) ? old : "");
+      el.disabled=!!forced;
+    });
+  };
+
+  async function rpcList(name, params){
+    const {data,error}=await supabaseClient.rpc(name, params || {});
+    if(error) throw error;
+    return data || [];
+  }
+
+  async function guardedLoad(fn){
+    const t = getTokenSafe();
+    if(!t){
+      window.fillPcSelects && window.fillPcSelects();
+      return [];
+    }
+    return await fn(t);
+  }
+
+  window.loadPcs = async function(render=true){
+    return guardedLoad(async (t)=>{
+      try{
+        window.pcs = await rpcList("admin_get_pcs",{p_session_token:t});
+      }catch(e){
+        console.error(e); window.pcs=[];
+        if(typeof toast==="function") toast("Error oficinas: "+(e.message||e),"err");
+      }
+      if(render) window.renderAll && window.renderAll();
+      return window.pcs;
+    });
+  };
+
+  window.loadBilleteras = async function(render=true){
+    return guardedLoad(async (t)=>{
+      const pc = window.pcSeleccionada();
+      try{
+        const rows = await rpcList("admin_get_billeteras",{p_session_token:t, p_pc_codigo: pc || null});
+        window.billeteras = (rows || []).filter(b => pcMatches(b.pc_codigo, pc));
+      }catch(e){
+        console.error(e); window.billeteras=[];
+        if(typeof toast==="function") toast("Error billeteras: "+(e.message||e),"err");
+      }
+      if(render) window.renderAll && window.renderAll();
+      return window.billeteras;
+    });
+  };
+
+  window.loadOperadores = async function(render=true){
+    return guardedLoad(async (t)=>{
+      const pc = window.pcSeleccionada();
+      try{
+        const rows = await rpcList("admin_get_operadores",{p_session_token:t});
+        window.operadores = (rows || []).filter(o => pcMatches(o.pc_codigo, pc));
+      }catch(e){
+        console.error(e); window.operadores=[];
+        if(typeof toast==="function") toast("Error operadores: "+(e.message||e),"err");
+      }
+      if(render) window.renderAll && window.renderAll();
+      return window.operadores;
+    });
+  };
+
+  window.loadSolicitudes = async function(render=true){
+    return guardedLoad(async (t)=>{
+      const pc = window.pcSeleccionada();
+      try{
+        const rows = await rpcList("admin_get_solicitudes",{p_session_token:t, p_pc_codigo: pc || null, p_limit: 1000});
+        window.solicitudes = (rows || []).filter(s => pcMatches(s.pc_codigo, pc));
+      }catch(e){
+        console.error(e); window.solicitudes=[];
+        if(typeof toast==="function") toast("Error solicitudes: "+(e.message||e),"err");
+      }
+      if(render) window.renderAll && window.renderAll();
+      return window.solicitudes;
+    });
+  };
+
+  window.loadWorkerJobs = async function(render=true){
+    return guardedLoad(async (t)=>{
+      const pc = window.pcSeleccionada();
+      try{
+        const rows = await rpcList("admin_get_worker_jobs",{p_session_token:t, p_pc_codigo: pc || null, p_limit: 1500});
+        window.workerJobs = (rows || []).filter(w => pcMatches(w.pc_codigo, pc));
+      }catch(e){
+        console.error(e); window.workerJobs=[];
+        if(typeof toast==="function") toast("Error worker: "+(e.message||e),"err");
+      }
+      if(render) window.renderAll && window.renderAll();
+      return window.workerJobs;
+    });
+  };
+
+  window.loadChats = async function(render=true){
+    return guardedLoad(async (t)=>{
+      const pc = window.pcSeleccionada();
+      try{
+        const ses = await rpcList("admin_get_chat_sesiones",{p_session_token:t, p_pc_codigo: pc || null});
+        window.chatSesiones = (ses || []).filter(c => pcMatches(c.pc_codigo, pc));
+        try{
+          window.chatMensajes = await rpcList("admin_get_chat_mensajes",{p_session_token:t, p_pc_codigo: pc || null});
+        }catch(e2){
+          window.chatMensajes = [];
+        }
+      }catch(e){
+        console.error(e); window.chatSesiones=[]; window.chatMensajes=[];
+      }
+      if(render) window.renderAll && window.renderAll();
+      return window.chatSesiones;
+    });
+  };
+
+  const previousReloadAll = window.reloadAll;
+  window.reloadAll = async function(){
+    if(!getTokenSafe()){
+      window.fillPcSelects && window.fillPcSelects();
+      return;
+    }
+
+    await Promise.allSettled([
+      window.loadPcs(false),
+      window.loadOperadores(false),
+      window.loadBilleteras(false),
+      window.loadConfig ? window.loadConfig(false) : Promise.resolve(),
+      window.loadSolicitudes(false),
+      window.loadChats(false),
+      window.loadWorkerJobs(false)
+    ]);
+
+    window.fillPcSelects && window.fillPcSelects();
+    window.renderAll && window.renderAll();
+  };
+
+  const previousRenderAll = window.renderAll;
+  window.renderAll = function(){
+    if(typeof previousRenderAll === "function") previousRenderAll();
+    try{ window.fillPcSelects && window.fillPcSelects(); }catch(e){}
+  };
+
+  window.cambiarOficinaAdmin = async function(){
+    if(!getTokenSafe()) return;
+    const pc = window.pcSeleccionada();
+    await window.reloadAll();
+    if(typeof toast === "function") toast(pc ? `Trabajando sobre ${pcLabel(pc)}` : "Vista general de todas las oficinas","okb");
+  };
+
+  document.addEventListener("DOMContentLoaded",()=>{
+    setTimeout(()=>{ try{ window.fillPcSelects && window.fillPcSelects(); }catch(e){} },900);
   });
 })();
 </script>
