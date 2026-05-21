@@ -4141,5 +4141,78 @@ async function cerrarSesion(){
 </script>
 
 
+
+<style>
+.transfer-chat-card.clean{max-width:360px}.transfer-copy-btn{width:100%;margin-top:7px;padding:8px 10px;border:0;border-radius:9px;background:#fdb022;color:#111;font-weight:900;cursor:pointer}.wallet-required{border:2px solid #f04438!important}.movements-box{margin-top:14px}.mov-row{display:grid;grid-template-columns:90px 1fr 110px;gap:8px;padding:9px;border-bottom:1px solid #2d3342;font-size:12px}.mov-pos{color:#b9f7cb;font-weight:900}.mov-neg{color:#ffd0d0;font-weight:900}
+</style>
+<script>
+/* =========================================================
+   NODO OPERATIVO · FIX FINAL CHAT + TARJETAS + ACCIÓN RÁPIDA
+========================================================= */
+(function(){
+  function norm(v){return String(v||'').trim().toUpperCase();}
+  function txt(v){return String(v||'').trim();}
+  function copyToast(t){try{toast(t,'green')}catch(e){alert(t)}}
+  window.copiarTextoOperativo=window.copiarTextoOperativo||function(texto,label){navigator.clipboard.writeText(String(texto||'')).then(()=>copyToast((label||'Dato')+' copiado')).catch(()=>alert(String(texto||'')));};
+  function parseTransferAny(raw){
+    raw=String(raw||'').trim();
+    if(!raw) return null;
+    let payload=null;
+    if(raw.startsWith('::TRANSFER_CARD::')) payload=raw.replace('::TRANSFER_CARD::','').trim();
+    if(raw.startsWith('TRANSFER_CARD:')) payload=raw.replace('TRANSFER_CARD:','').trim();
+    if(payload){try{return JSON.parse(payload)}catch(e){}}
+    if(/Billetera\s*:/i.test(raw)&&(/Alias\s*:/i.test(raw)||/CBU\/CVU\s*:/i.test(raw))){
+      const g=(re)=>{const m=raw.match(re);return m?m[1].trim():''};
+      return {nombre_visible:g(/Billetera\s*:\s*([^\n]+)/i),titular:g(/Titular\s*:\s*([^\n]+)/i),alias:g(/Alias\s*:\s*([^\n]+)/i),cbu:g(/CBU\/CVU\s*:\s*([^\n]+)/i),banco:g(/Banco\s*:\s*([^\n]+)/i)};
+    }
+    return null;
+  }
+  function esc(s){return typeof escapeHtml==='function'?escapeHtml(s):String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));}
+  function attr(s){return typeof escapeAttr==='function'?escapeAttr(s):esc(s);}
+  function renderTransferCopyCard(card){
+    const nombre=card.nombre_visible||card.NOMBRE_VISIBLE||card.BILLETERA_NOMBRE||card.nombre||'Datos para transferir';
+    const titular=card.titular||card.TITULAR||''; const alias=card.alias||card.ALIAS||''; const cbu=card.cbu||card.CVU_CBU||card.CBU||''; const banco=card.banco||card.TIPO||card.BANCO||'';
+    const aid='a_'+Math.random().toString(36).slice(2), cid='c_'+Math.random().toString(36).slice(2);
+    return `<div class="transfer-chat-card clean"><div class="transfer-chat-title">💳 ${esc(nombre)}</div>
+      ${alias?`<div class="transfer-chat-row"><div class="transfer-chat-label">Alias</div><div class="transfer-chat-value" id="${aid}">${esc(alias)}</div><button class="transfer-copy-btn" onclick="event.stopPropagation();copiarTextoOperativo(document.getElementById('${aid}').innerText,'Alias')">Copiar alias</button></div>`:''}
+      ${cbu?`<div class="transfer-chat-row"><div class="transfer-chat-label">CBU / CVU</div><div class="transfer-chat-value" id="${cid}">${esc(cbu)}</div><button class="transfer-copy-btn" onclick="event.stopPropagation();copiarTextoOperativo(document.getElementById('${cid}').innerText,'CBU/CVU')">Copiar CBU/CVU</button></div>`:''}
+      ${titular?`<div class="transfer-chat-row"><div class="transfer-chat-label">Titular</div><div class="transfer-chat-value">${esc(titular)}</div></div>`:''}
+      ${banco?`<div class="transfer-chat-note">Banco: ${esc(banco)}</div>`:''}
+      <div class="transfer-chat-note">Cuando realices la transferencia, enviá el comprobante por acá.</div></div>`;
+  }
+  window.renderMensajeChatContenidoSeguro=function(mensaje){const card=parseTransferAny(mensaje); if(card)return renderTransferCopyCard(card); return esc(mensaje||'').replace(/\n/g,'<br>');};
+  window.transferCardTextoHumano=function(card){return '::TRANSFER_CARD::'+JSON.stringify(card||{});};
+  window.resumenMensajeChatPreview=function(texto,img){return parseTransferAny(texto)?'📄 Tarjeta de transferencia enviada':(texto||img||'');};
+
+  function idWallet(b){return String(b.ID_BILLETERA||b.id||b.billetera_id||'');}
+  function activeWallets(){
+    const all=(billeterasTodas&&billeterasTodas.length?billeterasTodas:billeteras)||[];
+    return all.filter(b=>String(b.PC||b.pc_codigo||pcOperativa).toUpperCase()===String(pcOperativa).toUpperCase() && (norm(b.ACTIVA)==='SI'||b.activa===true||norm(b.ESTADO)==='ACTIVA'||norm(b.estado)==='ACTIVA'));
+  }
+  window.renderWalletSelectWorkerInicio=function(){const sel=document.getElementById('manualWorkerBilleteraInicio'); if(!sel)return; const tipo=val('manualWorkerTipoInicio'); const lista=activeWallets(); sel.innerHTML=`<option value="">${tipo==='VALIDAR_USUARIO'?'No aplica para validar':'Seleccionar billetera'}</option>`+lista.map(b=>`<option value="${attr(idWallet(b))}">${esc(b.NOMBRE_VISIBLE||b.BILLETERA_NOMBRE||b.nombre_visible||'Billetera')} · ${esc(b.TIPO||b.BANCO||b.banco||'')} ${b.saldo!==undefined?'· '+money(b.saldo):''}</option>`).join('');};
+  window.ajustarMontoWorkerManualInicio=function(){const tipo=val('manualWorkerTipoInicio'),m=document.getElementById('manualWorkerMontoInicio'),w=document.getElementById('manualWorkerBilleteraInicio'); if(tipo==='VALIDAR_USUARIO'){if(m){m.value='0';m.disabled=true} if(w){w.value='';w.disabled=true;w.classList.remove('wallet-required')}}else{if(m)m.disabled=false;if(w)w.disabled=false} renderWalletSelectWorkerInicio();};
+  window.crearWorkerJobManualInicio=async function(){
+    const tipo=val('manualWorkerTipoInicio'), usuario=val('manualWorkerUsuarioInicio').trim(), monto=Number(val('manualWorkerMontoInicio')||0), wid=val('manualWorkerBilleteraInicio');
+    const out='manualWorkerResultadoInicio';
+    if(!usuario){setBox(out,'<div class="err-box">Ingresá usuario.</div>');return;}
+    if(tipo!=='VALIDAR_USUARIO' && (!monto||monto<=0)){setBox(out,'<div class="err-box">Ingresá un monto válido.</div>');return;}
+    if(tipo!=='VALIDAR_USUARIO' && !wid){document.getElementById('manualWorkerBilleteraInicio')?.classList.add('wallet-required');setBox(out,'<div class="err-box">Seleccioná la billetera que impacta esta operación. No se envió nada.</div>');return;}
+    document.getElementById('manualWorkerBilleteraInicio')?.classList.remove('wallet-required');
+    document.getElementById('manualWorkerUsuario').value=usuario; document.getElementById('manualWorkerTipo').value=tipo; document.getElementById('manualWorkerMonto').value=String(monto||0); document.getElementById('manualWorkerBilletera').value=wid; document.getElementById('manualWorkerObs').value=val('manualWorkerObsInicio');
+    await crearWorkerJobManualDesdePanel(); setBox(out,document.getElementById('manualWorkerResultado')?.innerHTML||''); await refrescarTodo(false);
+  };
+  const oldRenderSelects=window.renderSelectsAjustes;
+  window.renderSelectsAjustes=function(){try{oldRenderSelects&&oldRenderSelects()}catch(e){} renderMovimientosBilleteraBox();};
+  window.renderMovimientosBilleteraBox=function(){
+    let box=document.getElementById('movimientosBilleteraBox');
+    const ajustes=document.getElementById('viewAjustes'); if(!ajustes)return;
+    if(!box){box=document.createElement('div');box.id='movimientosBilleteraBox';box.className='ops-panel movements-box';ajustes.appendChild(box);}
+    const movs=(saldosOperativos?.movimientos_billetera||saldosOperativos?.movimientos||[]).slice(0,25);
+    box.innerHTML=`<div class="ops-panel-title">📒 Movimientos de billetera</div>${movs.length?movs.map(m=>`<div class="mov-row"><div>${esc((m.created_at||m.fecha||'').slice(0,16))}</div><div>${esc(m.billetera_nombre||m.nombre_visible||m.motivo||m.tipo_movimiento||'-')}</div><div class="${Number(m.signo||0)>=0?'mov-pos':'mov-neg'}">${Number(m.signo||0)>=0?'+':'-'} ${money(Math.abs(Number(m.monto||0)))}</div></div>`).join(''):'<div class="alert-box">Sin movimientos visibles. Si no aparece historial, falta ejecutar el SQL/RPC de movimientos.</div>'}`;
+  };
+  setTimeout(()=>{try{renderWalletSelectWorkerInicio();renderSelectsAjustes()}catch(e){}},800);
+})();
+</script>
+
 </body>
 </html>
