@@ -4351,8 +4351,7 @@ async function cerrarSesion(){
         .select("*")
         .eq("pc_codigo", pc)
         .order("updated_at", {ascending:false})
-        .limit(1)
-        .maybeSingle();
+        .limit(1);
 
       if(error){
         console.warn("Saldo agente realtime no disponible:", error.message || error);
@@ -4360,7 +4359,8 @@ async function cerrarSesion(){
         return;
       }
 
-      renderAgentSaldo(data || null);
+      const row = Array.isArray(data) ? (data[0] || null) : (data || null);
+      renderAgentSaldo(row);
     }catch(e){
       console.warn("cargarSaldoAgenteRealtime", e);
     }
