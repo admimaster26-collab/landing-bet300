@@ -4214,5 +4214,570 @@ async function cerrarSesion(){
 })();
 </script>
 
+
+<script>
+/* =========================================================
+   PANEL OPERATIVO V19 · REALTIME FIRME + ACCIÓN SEGURA
+   - Supabase Realtime para solicitudes, worker, chat y saldo agente.
+   - Sin polling agresivo.
+   - Saldo del agente en vivo.
+   - Acción rápida usa operativo_accion_rapida_segura.
+   - Chat: marcar leído real + tarjeta transferible copiable.
+========================================================= */
+(function(){
+  if(window.__NODO_PANEL_RT_V19_INSTALLED__) return;
+  window.__NODO_PANEL_RT_V19_INSTALLED__ = true;
+
+  const STATE = {
+    channel:null,
+    safetyTimer:null,
+    debounceTimers:{},
+    saldoAgente:null
+  };
+
+  function normPc(v){
+    v = String(v || "").trim().toUpperCase().replace(/\s+/g,"").replaceAll("-","").replaceAll("_","");
+    if(/^PC\d+$/.test(v)) return "P" + v.replace("PC","");
+    if(/^\d+$/.test(v)) return "P" + v;
+    return v;
+  }
+
+  function h(text){
+    if(typeof escapeHtml === "function") return escapeHtml(text);
+    return String(text||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
+  }
+
+  function a(text){
+    if(typeof escapeAttr === "function") return escapeAttr(text);
+    return h(text);
+  }
+
+  function pesos(v){
+    if(typeof money === "function") return money(v);
+    return Number(v||0).toLocaleString("es-AR",{style:"currency",currency:"ARS",maximumFractionDigits:0});
+  }
+
+  function fecha(v){
+    if(typeof formatFecha === "function") return formatFecha(v);
+    return v ? new Date(v).toLocaleString("es-AR") : "";
+  }
+
+  function box(id, html){
+    if(typeof setBox === "function") return setBox(id, html);
+    const el=document.getElementById(id);
+    if(el) el.innerHTML=html;
+  }
+
+  function notify(msg,type="green"){
+    try{
+      if(typeof toast === "function") toast(msg,type);
+    }catch(e){}
+  }
+
+  function debounce(key, fn, ms=450){
+    clearTimeout(STATE.debounceTimers[key]);
+    STATE.debounceTimers[key] = setTimeout(fn, ms);
+  }
+
+  function pcActual(){
+    try{return normPc(window.pcOperativa || pcOperativa || localStorage.getItem("nodo_pc_operativa_lite") || "");}
+    catch(e){return "";}
+  }
+
+  function token(){
+    try{
+      if(typeof requireSessionToken === "function") return requireSessionToken();
+    }catch(e){}
+    try{return window.panelSessionToken || panelSessionToken || "";}catch(e){return "";}
+  }
+
+  function ensureAgentSaldoDom(){
+    let card = document.getElementById("agentSaldoRealtimeBox");
+    const anchor = document.getElementById("opsKpis");
+    if(!anchor) return null;
+
+    if(!card){
+      card = document.createElement("div");
+      card.id = "agentSaldoRealtimeBox";
+      card.className = "agent-rt-card";
+      anchor.parentNode.insertBefore(card, anchor);
+    }
+    return card;
+  }
+
+  function renderAgentSaldo(row){
+    STATE.saldoAgente = row || STATE.saldoAgente;
+    const card = ensureAgentSaldoDom();
+    if(!card) return;
+
+    const s = STATE.saldoAgente;
+    if(!s){
+      card.innerHTML = `
+        <div class="agent-rt-left">
+          <div class="agent-rt-title">Saldo agente en vivo</div>
+          <div class="agent-rt-value">Sin dato todavía</div>
+          <div class="agent-rt-sub">El worker lo actualizará al finalizar carga/retiro/validación.</div>
+        </div>
+        <div class="agent-rt-status off">ESPERANDO</div>
+      `;
+      return;
+    }
+
+    const estado = String(s.estado || "OK").toUpperCase();
+    const ok = estado === "OK";
+    const last = s.updated_at || s.created_at || "";
+    card.innerHTML = `
+      <div class="agent-rt-left">
+        <div class="agent-rt-title">Saldo agente en vivo · ${h(s.pc_codigo || pcActual())}</div>
+        <div class="agent-rt-value">${pesos(s.saldo_agente || 0)}</div>
+        <div class="agent-rt-sub">
+          Última actualización: ${h(fecha(last))}<br>
+          Último: ${h(s.ultimo_tipo || "-")} · ${h(s.ultimo_usuario || "-")}
+          ${s.error ? `<br><span class="agent-rt-error">${h(s.error)}</span>` : ""}
+        </div>
+      </div>
+      <div class="agent-rt-status ${ok ? "ok" : "err"}">${h(estado)}</div>
+    `;
+  }
+
+  async function cargarSaldoAgenteRealtime(){
+    const pc = pcActual();
+    if(!pc || !window.supabaseClient) return;
+
+    try{
+      const {data,error} = await supabaseClient
+        .from("worker_agent_saldos_estado")
+        .select("*")
+        .eq("pc_codigo", pc)
+        .order("updated_at", {ascending:false})
+        .limit(1)
+        .maybeSingle();
+
+      if(error){
+        console.warn("Saldo agente realtime no disponible:", error.message || error);
+        renderAgentSaldo(null);
+        return;
+      }
+
+      renderAgentSaldo(data || null);
+    }catch(e){
+      console.warn("cargarSaldoAgenteRealtime", e);
+    }
+  }
+
+  window.cargarSaldoAgenteRealtime = cargarSaldoAgenteRealtime;
+  window.renderAgentSaldoRealtime = renderAgentSaldo;
+
+  function refreshSolicitudes(){
+    debounce("solicitudes", async ()=>{
+      try{
+        if(typeof cargarSolicitudes === "function") await cargarSolicitudes(true);
+        if(typeof renderInicio === "function") renderInicio();
+        if(typeof renderCentroOperativo === "function") renderCentroOperativo();
+        if(typeof renderSolicitudes === "function") renderSolicitudes();
+      }catch(e){console.warn("RT solicitudes", e);}
+    }, 350);
+  }
+
+  function refreshWorker(){
+    debounce("worker", async ()=>{
+      try{
+        if(typeof cargarWorkerJobs === "function") await cargarWorkerJobs(false);
+        if(typeof renderCentroOperativo === "function") renderCentroOperativo();
+      }catch(e){console.warn("RT worker", e);}
+    }, 350);
+  }
+
+  function refreshChats(){
+    debounce("chat", async ()=>{
+      try{
+        if(typeof cargarChats === "function") await cargarChats(true);
+        if(window.chatActualId && typeof cargarChatActual === "function") await cargarChatActual(false);
+        if(typeof renderInicio === "function") renderInicio();
+      }catch(e){console.warn("RT chat", e);}
+    }, 300);
+  }
+
+  function refreshSaldo(payload){
+    try{
+      const pc = pcActual();
+      const row = payload && (payload.new || payload.record || payload.old);
+      if(row && normPc(row.pc_codigo) === pc){
+        renderAgentSaldo(row);
+      }else{
+        cargarSaldoAgenteRealtime();
+      }
+      if(typeof renderInicio === "function") renderInicio();
+      if(typeof renderCentroOperativo === "function") renderCentroOperativo();
+    }catch(e){console.warn("RT saldo", e);}
+  }
+
+  window.iniciarRealtimeOperativoFirme = function(){
+    const pc = pcActual();
+    if(!pc || !window.supabaseClient) return;
+
+    try{
+      if(STATE.channel){
+        supabaseClient.removeChannel(STATE.channel);
+        STATE.channel = null;
+      }
+    }catch(e){}
+
+    const ch = supabaseClient.channel("nodo_operativo_v19_" + pc + "_" + Date.now());
+
+    ch.on("postgres_changes", {
+      event:"*", schema:"public", table:"solicitudes", filter:"pc_codigo=eq." + pc
+    }, refreshSolicitudes);
+
+    ch.on("postgres_changes", {
+      event:"*", schema:"public", table:"worker_jobs", filter:"pc_codigo=eq." + pc
+    }, refreshWorker);
+
+    ch.on("postgres_changes", {
+      event:"*", schema:"public", table:"chat_sesiones", filter:"pc_codigo=eq." + pc
+    }, refreshChats);
+
+    // chat_mensajes no tiene pc_codigo. Escuchamos la tabla y refrescamos chat con debounce.
+    ch.on("postgres_changes", {
+      event:"*", schema:"public", table:"chat_mensajes"
+    }, refreshChats);
+
+    ch.on("postgres_changes", {
+      event:"*", schema:"public", table:"worker_agent_saldos_estado", filter:"pc_codigo=eq." + pc
+    }, refreshSaldo);
+
+    ch.subscribe((status)=>{
+      const el=document.getElementById("realtimeStatusChip");
+      if(el){
+        el.textContent = status === "SUBSCRIBED" ? "Realtime conectado" : "Realtime " + status;
+        el.className = "rt-status " + (status === "SUBSCRIBED" ? "ok" : "warn");
+      }
+      if(status === "SUBSCRIBED"){
+        console.log("Realtime operativo conectado:", pc);
+      }
+    });
+
+    STATE.channel = ch;
+    cargarSaldoAgenteRealtime();
+
+    if(!STATE.safetyTimer){
+      // Respaldo liviano, no polling agresivo.
+      STATE.safetyTimer = setInterval(()=>{
+        cargarSaldoAgenteRealtime();
+      }, 60000);
+    }
+  };
+
+  function ensureRealtimeChip(){
+    if(document.getElementById("realtimeStatusChip")) return;
+    const info=document.getElementById("operadorInfo");
+    if(info){
+      const div=document.createElement("div");
+      div.id="realtimeStatusChip";
+      div.className="rt-status warn";
+      div.textContent="Realtime iniciando";
+      info.appendChild(div);
+    }
+  }
+
+  // Reemplazamos el finalizarLogin viejo para no levantar polling cada 2/3 segundos.
+  const finalizarAnterior = window.finalizarLogin;
+  window.finalizarLogin = async function(guardar=true){
+    if(guardar){
+      try{
+        localStorage.setItem(LS_OPERADOR,JSON.stringify(operador));
+        localStorage.setItem(LS_PC,pcOperativa);
+        localStorage.setItem(LS_TOKEN,panelSessionToken);
+      }catch(e){}
+    }
+
+    document.getElementById("loginView")?.classList.add("hidden");
+    document.getElementById("appView")?.classList.remove("hidden");
+
+    box("operadorInfo",`
+      <b>${h(operador?.nombre||operador?.NOMBRE||operador?.usuario||"Operador")}</b><br>
+      <span class="badge badge-blue">Rol: ${h(operador?.rol||operador?.ROL||"-")}</span>
+      <span class="badge badge-muted">Tipo: ${h(operador?.tipoOperador||operador?.tipo||"-")}</span>
+      <span class="badge badge-ok">PC: ${h(pcActual())}</span>
+    `);
+
+    ensureRealtimeChip();
+
+    try{ await refrescarTodo(false); }catch(e){ console.warn("refrescarTodo login", e); }
+    try{ window.iniciarRealtimeOperativoFirme(); }catch(e){ console.warn("Realtime init", e); }
+
+    // Respaldo liviano cada 60s por si el navegador duerme el socket.
+    if(!timersIniciados){
+      timersIniciados = true;
+      setInterval(()=>{ try{ cargarSaldoAgenteRealtime(); }catch(e){} }, 60000);
+    }
+  };
+
+  try{ finalizarLogin = window.finalizarLogin; }catch(e){}
+
+  // Acción rápida segura usando la RPC nueva.
+  async function accionRapidaSegura(usuario, tipo, monto, billeteraId, obs, outId){
+    usuario = String(usuario || "").trim();
+    tipo = String(tipo || "").trim();
+    monto = Number(monto || 0);
+    billeteraId = String(billeteraId || "").trim();
+
+    if(!usuario){
+      box(outId, `<div class="err-box">Ingresá un usuario.</div>`);
+      return false;
+    }
+    if(tipo !== "VALIDAR_USUARIO" && (!monto || monto <= 0)){
+      box(outId, `<div class="err-box">Ingresá un monto válido.</div>`);
+      return false;
+    }
+    if(tipo !== "VALIDAR_USUARIO" && !billeteraId){
+      box(outId, `<div class="err-box">Seleccioná la billetera impactada. No se envió nada.</div>`);
+      return false;
+    }
+
+    box(outId, `<div class="alert-box">Enviando acción segura al worker...</div>`);
+
+    const {data,error} = await supabaseClient.rpc("operativo_accion_rapida_segura", {
+      p_pc_codigo: pcActual(),
+      p_operador: operador?.usuario || operador?.nombre || "",
+      p_usuario: usuario,
+      p_tipo_accion: tipo,
+      p_monto: tipo === "VALIDAR_USUARIO" ? 0 : monto,
+      p_billetera_id: tipo === "VALIDAR_USUARIO" ? null : billeteraId,
+      p_observacion: obs || ""
+    });
+
+    if(error){
+      box(outId, `<div class="err-box">Error creando job: ${h(error.message || error)}</div>`);
+      return false;
+    }
+
+    const r = Array.isArray(data) ? data[0] : data;
+    if(!r || r.ok === false){
+      box(outId, `<div class="err-box">${h(r?.mensaje || r?.error || "No se pudo crear el job.")}</div>`);
+      return false;
+    }
+
+    const jobId = r?.job?.job_id || r?.job_id || "-";
+    box(outId, `<div class="ok-box">${h(r.mensaje || "Acción enviada al worker.")} Job: <b>${h(jobId)}</b></div>`);
+    notify("Orden enviada al worker", "green");
+    refreshWorker();
+    return true;
+  }
+
+  window.crearWorkerJobManualDesdePanel = async function(){
+    const ok = await accionRapidaSegura(
+      val("manualWorkerUsuario"),
+      val("manualWorkerTipo"),
+      val("manualWorkerMonto"),
+      val("manualWorkerBilletera"),
+      val("manualWorkerObs"),
+      "manualWorkerResultado"
+    );
+    if(ok){
+      try{ await cargarWorkerJobs(false); }catch(e){}
+    }
+  };
+
+  window.crearWorkerJobManualInicio = async function(){
+    const ok = await accionRapidaSegura(
+      val("manualWorkerUsuarioInicio"),
+      val("manualWorkerTipoInicio"),
+      val("manualWorkerMontoInicio"),
+      val("manualWorkerBilleteraInicio"),
+      val("manualWorkerObsInicio"),
+      "manualWorkerResultadoInicio"
+    );
+    if(ok){
+      try{ await cargarWorkerJobs(false); }catch(e){}
+      try{ if(typeof renderCentroOperativo === "function") renderCentroOperativo(); }catch(e){}
+    }
+  };
+
+  function parseTransferPayload(raw){
+    const txt = String(raw || "").trim();
+    try{
+      if(txt.startsWith("{")) return JSON.parse(txt);
+      if(txt.startsWith("TRANSFER_CARD:")) return JSON.parse(txt.replace("TRANSFER_CARD:","").trim());
+    }catch(e){}
+    const out = {};
+    txt.split(/\n+/).forEach(line=>{
+      const l=line.trim();
+      const [k,...rest]=l.split(":");
+      const v=rest.join(":").trim();
+      const kk=String(k||"").toLowerCase();
+      if(kk.includes("alias")) out.alias=v;
+      if(kk.includes("cbu")||kk.includes("cvu")) out.cbu=v;
+      if(kk.includes("titular")) out.titular=v;
+      if(kk.includes("banco")||kk.includes("billetera")) out.banco=out.banco||v;
+    });
+    return out;
+  }
+
+  window.renderTransferCardChat = function(raw){
+    const d = parseTransferPayload(raw);
+    const alias = d.alias || d.ALIAS || "";
+    const cbu = d.cbu || d.CBU || d.cvu || d.CVU || "";
+    const titular = d.titular || d.TITULAR || "";
+    const banco = d.banco || d.BANCO || d.nombre_visible || d.NOMBRE_VISIBLE || "Billetera";
+    return `
+      <div class="transfer-chat-card clean">
+        <div class="transfer-chat-title">💳 Datos para transferir</div>
+        <div class="transfer-chat-row">
+          <div class="transfer-chat-label">Billetera</div>
+          <div class="transfer-chat-value">${h(banco)}</div>
+        </div>
+        <div class="transfer-chat-row">
+          <div class="transfer-chat-label">Alias</div>
+          <div class="transfer-chat-value">${h(alias || "-")}</div>
+          ${alias ? `<button class="copy-mini" onclick="copiarTextoOperativo('${a(alias)}','Alias')">Copiar alias</button>` : ""}
+        </div>
+        <div class="transfer-chat-row">
+          <div class="transfer-chat-label">CBU / CVU</div>
+          <div class="transfer-chat-value">${h(cbu || "-")}</div>
+          ${cbu ? `<button class="copy-mini" onclick="copiarTextoOperativo('${a(cbu)}','CBU/CVU')">Copiar CBU/CVU</button>` : ""}
+        </div>
+        <div class="transfer-chat-row">
+          <div class="transfer-chat-label">Titular</div>
+          <div class="transfer-chat-value">${h(titular || "-")}</div>
+        </div>
+        <div class="transfer-chat-note">Enviá el comprobante por este chat cuando termines.</div>
+      </div>
+    `;
+  };
+
+  window.enviarTarjetaTransferencia = async function(){
+    if(!chatActualId){
+      alert("Seleccioná un chat primero.");
+      return;
+    }
+
+    const id = val("chatWalletSelect");
+    const wallet = typeof getWalletById === "function" ? getWalletById(id) : null;
+
+    if(!wallet){
+      alert("Seleccioná una billetera.");
+      return;
+    }
+
+    const payload = {
+      id: wallet.ID_BILLETERA || wallet.id || "",
+      pc_codigo: wallet.PC || wallet.pc_codigo || pcActual(),
+      nombre_visible: wallet.NOMBRE_VISIBLE || wallet.BILLETERA_NOMBRE || wallet.nombre_visible || "",
+      titular: wallet.TITULAR || wallet.titular || "",
+      alias: wallet.ALIAS || wallet.alias || "",
+      cbu: wallet.CVU_CBU || wallet.CBU || wallet.cbu || "",
+      banco: wallet.TIPO || wallet.BANCO || wallet.banco || ""
+    };
+
+    const mensaje = "TRANSFER_CARD:" + JSON.stringify(payload);
+
+    const {error} = await supabaseClient.rpc("panel_operativo_enviar_chat", {
+      p_session_token: token(),
+      p_chat_id: chatActualId,
+      p_mensaje: mensaje,
+      p_imagen_url: null
+    });
+
+    if(error){
+      alert("Error enviando tarjeta: " + (error.message || error));
+      return;
+    }
+
+    notify("Tarjeta enviada", "green");
+    refreshChats();
+  };
+
+  // Abrir chat = marcado leído real en DB y en local.
+  const abrirChatAnterior = window.abrirChat;
+  window.abrirChat = async function(id){
+    if(typeof abrirChatAnterior === "function"){
+      await abrirChatAnterior(id);
+    }
+    const cid = String(id || chatActualId || "");
+    if(!cid) return;
+
+    try{
+      await supabaseClient.rpc("operativo_marcar_chat_leido", {
+        p_chat_id: cid,
+        p_operador: operador?.usuario || operador?.nombre || ""
+      });
+    }catch(e){
+      console.warn("operativo_marcar_chat_leido", e);
+    }
+
+    try{
+      if(typeof clearChatBadgeV8 === "function") clearChatBadgeV8(cid);
+      if(typeof renderChatList === "function") renderChatList();
+      if(typeof updateBadgeChatLateralV8 === "function") updateBadgeChatLateralV8();
+    }catch(e){}
+  };
+
+  // Si existe render de movimientos, lo refuerza. Si no, crea el bloque.
+  window.renderMovimientosBilleteraBox = function(){
+    let boxEl=document.getElementById("movimientosBilleteraBox");
+    const ajustes=document.getElementById("viewAjustes");
+    if(!ajustes) return;
+
+    if(!boxEl){
+      boxEl=document.createElement("div");
+      boxEl.id="movimientosBilleteraBox";
+      boxEl.className="ops-panel movements-box";
+      ajustes.appendChild(boxEl);
+    }
+
+    const movs=(saldosOperativos?.movimientos_billetera || saldosOperativos?.movimientos || []).slice(0,40);
+    boxEl.innerHTML = `
+      <div class="ops-panel-title">📒 Movimientos de billetera</div>
+      ${movs.length ? movs.map(m=>`
+        <div class="mov-row">
+          <div>${h(fecha(m.created_at || m.fecha || ""))}</div>
+          <div>${h(m.billetera_nombre || m.nombre_visible || m.tipo_movimiento || m.motivo || "-")}</div>
+          <div class="${Number(m.signo||0)>=0 ? "mov-pos" : "mov-neg"}">
+            ${Number(m.signo||0)>=0 ? "+" : "-"} ${pesos(Math.abs(Number(m.monto||0)))}
+          </div>
+        </div>
+      `).join("") : `<div class="alert-box">Sin movimientos visibles. Cuando el SQL/RPC de movimientos esté activo, aparecerán acá.</div>`}
+    `;
+  };
+
+  const renderSelectsAnterior = window.renderSelectsAjustes;
+  window.renderSelectsAjustes = function(){
+    try{ if(typeof renderSelectsAnterior === "function") renderSelectsAnterior(); }catch(e){}
+    try{ window.renderMovimientosBilleteraBox(); }catch(e){}
+  };
+
+  // CSS necesario del parche.
+  const style=document.createElement("style");
+  style.textContent=`
+    .agent-rt-card{
+      display:flex;justify-content:space-between;gap:14px;align-items:center;
+      background:linear-gradient(135deg,#101a2b,#12281f);
+      border:1px solid rgba(18,183,106,.35);
+      border-radius:18px;padding:15px;margin-bottom:14px;
+      box-shadow:0 10px 30px rgba(0,0,0,.22)
+    }
+    .agent-rt-title{font-size:12px;color:#98a2b3;text-transform:uppercase;font-weight:900;letter-spacing:.35px;margin-bottom:6px}
+    .agent-rt-value{font-size:28px;font-weight:900;color:#b9f7cb}
+    .agent-rt-sub{font-size:12px;color:#98a2b3;margin-top:6px;line-height:1.35}
+    .agent-rt-error{color:#ffd0d0}
+    .agent-rt-status,.rt-status{border-radius:999px;padding:7px 10px;font-size:11px;font-weight:900;border:1px solid transparent;white-space:nowrap;display:inline-block;margin-top:8px}
+    .agent-rt-status.ok,.rt-status.ok{background:#11371f;color:#b9f7cb;border-color:rgba(18,183,106,.35)}
+    .agent-rt-status.err{background:#3a1515;color:#ffd0d0;border-color:rgba(240,68,56,.35)}
+    .agent-rt-status.off,.rt-status.warn{background:#3b2606;color:#ffd98f;border-color:rgba(253,176,34,.35)}
+    .movements-box{margin-top:14px}
+    .mov-row{display:grid;grid-template-columns:155px 1fr auto;gap:10px;align-items:center;border-bottom:1px solid #2d3342;padding:9px 0;font-size:13px}
+    .mov-pos{color:#b9f7cb;font-weight:900}.mov-neg{color:#ffd0d0;font-weight:900}
+    .transfer-chat-card.clean button.copy-mini{margin-top:8px;background:#2d3443;color:#fff;border-radius:9px;padding:7px 10px;width:auto;font-size:12px}
+    @media(max-width:700px){.agent-rt-card{display:block}.mov-row{grid-template-columns:1fr}}
+  `;
+  document.head.appendChild(style);
+
+  document.addEventListener("DOMContentLoaded", ()=>{
+    setTimeout(()=>{try{ensureAgentSaldoDom(); renderAgentSaldo(null);}catch(e){}}, 500);
+  });
+})();
+</script>
+
 </body>
 </html>
