@@ -5714,5 +5714,292 @@ async function cerrarSesion(){
 })();
 </script>
 
+
+<!-- =========================================================
+  NODO OPERATIVO · MODO OFICINA COMPACTO V1
+  Solo UX/vista. No toca RPC, SQL, worker ni flujos existentes.
+========================================================= -->
+<style>
+body.office-mode{overflow:hidden!important;background:#080b12!important}
+body.office-mode .layout{grid-template-columns:122px minmax(0,1fr)!important;height:100vh!important;min-height:0!important}
+body.office-mode .sidebar{padding:8px!important;overflow:hidden auto!important;background:#101522!important}
+body.office-mode .logo{width:70px!important;margin:0 auto 8px!important}
+body.office-mode .sidebar .card{padding:8px!important;margin-bottom:8px!important;border-radius:12px!important}
+body.office-mode #operadorInfo{font-size:10px!important;line-height:1.15!important}
+body.office-mode #operadorInfo b, body.office-mode #operadorInfo strong{font-size:12px!important}
+body.office-mode .nav-btn{padding:8px 7px!important;margin-bottom:6px!important;border-radius:10px!important;font-size:11px!important;line-height:1.05!important;white-space:normal!important;text-align:left!important}
+body.office-mode .badge-alert{right:6px!important;top:5px!important;min-width:18px!important;height:18px!important;font-size:10px!important}
+body.office-mode .badge-chat{right:28px!important}
+body.office-mode .main{padding:8px!important;overflow:auto!important;min-width:0!important}
+body.office-mode .mobile-top{display:none!important}
+body.office-mode .ops-head{margin-bottom:6px!important;align-items:center!important}
+body.office-mode .ops-title{font-size:18px!important;line-height:1.05!important}
+body.office-mode .ops-sub{font-size:10px!important}
+body.office-mode .ops-compact-actions{gap:5px!important}
+body.office-mode .mini-btn{padding:6px 8px!important;font-size:11px!important;border-radius:8px!important}
+body.office-mode #alertas{display:none!important}
+body.office-mode .agent-rt-card{margin-bottom:8px!important;padding:9px 11px!important;border-radius:13px!important}
+body.office-mode .agent-rt-title{font-size:11px!important;letter-spacing:.25px!important}
+body.office-mode .agent-rt-value{font-size:23px!important;line-height:1!important}
+body.office-mode .agent-rt-meta{font-size:10px!important}
+body.office-mode .agent-rt-status{font-size:10px!important;padding:5px 8px!important}
+body.office-mode .ops-kpis{grid-template-columns:repeat(4,minmax(110px,1fr))!important;gap:7px!important;margin-bottom:8px!important}
+body.office-mode .ops-kpi{padding:8px!important;border-radius:12px!important}
+body.office-mode .ops-kpi-title{font-size:9px!important;margin-bottom:4px!important}
+body.office-mode .ops-kpi-value{font-size:18px!important;line-height:1!important}
+body.office-mode .ops-kpi-sub{font-size:9px!important;margin-top:3px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.office-mode .ops-wallet-strip{display:flex!important;overflow-x:auto!important;gap:7px!important;margin-bottom:8px!important;padding-bottom:2px!important;scrollbar-width:thin!important}
+body.office-mode .ops-wallet{min-width:170px!important;max-width:210px!important;padding:8px!important;border-radius:12px!important}
+body.office-mode .ops-wallet-name{font-size:12px!important;margin-bottom:3px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.office-mode .ops-wallet-saldo{font-size:17px!important;margin-bottom:2px!important}
+body.office-mode .ops-wallet-meta{font-size:9.5px!important;line-height:1.25!important;max-height:25px!important;overflow:hidden!important}
+body.office-mode .ops-wallet-actions{margin-top:5px!important;gap:4px!important}
+body.office-mode .ops-wallet-actions .mini-btn{font-size:10px!important;padding:5px 6px!important}
+body.office-mode .ops-grid{grid-template-columns:1fr!important;gap:8px!important}
+body.office-mode .ops-grid>div:nth-child(2){order:-1!important;display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:8px!important;align-items:start!important}
+body.office-mode .ops-grid>div:nth-child(2) .ops-panel{margin-bottom:0!important}
+body.office-mode .ops-grid>div:nth-child(2) .ops-panel:nth-child(2){min-width:180px!important;max-width:210px!important}
+body.office-mode .ops-panel{padding:8px!important;border-radius:12px!important;margin-bottom:8px!important}
+body.office-mode .ops-panel-title{font-size:14px!important;margin-bottom:6px!important}
+body.office-mode .ops-alert{display:none!important}
+body.office-mode .ops-manual-grid{display:grid!important;grid-template-columns:1.05fr .9fr .62fr 1.1fr .9fr!important;gap:6px!important;align-items:end!important}
+body.office-mode .ops-manual-grid label{font-size:10px!important;margin-bottom:3px!important}
+body.office-mode .ops-manual-grid input,
+body.office-mode .ops-manual-grid select{padding:7px 8px!important;font-size:12px!important;border-radius:8px!important;margin:0!important;height:32px!important}
+body.office-mode #manualWorkerResultadoInicio{font-size:11px!important;margin-top:6px!important;max-height:48px!important;overflow:auto!important}
+body.office-mode .btn{padding:8px!important;border-radius:9px!important;font-size:12px!important}
+body.office-mode .ops-table-wrap{max-height:calc(100vh - 355px)!important;min-height:220px!important;border-radius:11px!important}
+body.office-mode .ops-main-table th,
+body.office-mode .ops-main-table td{font-size:10.5px!important;padding:6px 7px!important;line-height:1.15!important}
+body.office-mode .ops-origin{font-size:9px!important;padding:3px 5px!important}
+body.office-mode .badge{font-size:9px!important;padding:4px 6px!important}
+body.office-mode .worker-error-chip{font-size:9.5px!important;padding:4px 5px!important;max-width:160px!important;display:inline-block!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+body.office-mode .card{padding:10px!important;margin-bottom:10px!important;border-radius:12px!important}
+body.office-mode .card-title{font-size:16px!important;margin-bottom:8px!important}
+body.office-mode .filters{gap:6px!important;margin-bottom:8px!important}
+body.office-mode .filters input,
+body.office-mode .filters select{padding:7px 8px!important;font-size:12px!important;margin:0!important;height:32px!important}
+body.office-mode .table-wrap{max-height:calc(100vh - 165px)!important}
+body.office-mode table th, body.office-mode table td{font-size:10.5px!important;padding:6px!important}
+#officeDock{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#111827;border:1px solid #2c3140;border-radius:13px;padding:7px 9px;margin-bottom:8px;position:sticky;top:0;z-index:50;box-shadow:0 10px 22px rgba(0,0,0,.20)}
+#officeDock .od-left{display:flex;align-items:center;gap:8px;min-width:0}
+#officeDock .od-title{font-weight:900;font-size:12px;white-space:nowrap}
+#officeDock .od-sub{color:#98a2b3;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
+#officeDock .od-actions{display:flex;gap:5px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.office-chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:5px 8px;font-size:10px;font-weight:900;background:#172033;border:1px solid #30384a;color:#fff;white-space:nowrap}
+.office-chip.green{background:#11371f;color:#b9f7cb;border-color:rgba(18,183,106,.45)}
+.office-chip.warn{background:#332509;color:#ffd98f;border-color:rgba(253,176,34,.45)}
+.office-chat-button{position:relative!important}
+.office-chat-button .bubble{position:absolute;right:-5px;top:-5px;background:#ff3b30;color:#fff;border-radius:999px;min-width:17px;height:17px;display:none;align-items:center;justify-content:center;font-size:9px;font-weight:900}
+.office-chat-button.has-unread .bubble{display:flex}
+body.office-chat-open #viewChat{display:block!important;position:fixed!important;right:0!important;top:0!important;bottom:0!important;width:min(820px,calc(100vw - 20px))!important;background:#0e1014!important;z-index:9000!important;padding:10px!important;box-shadow:-18px 0 55px rgba(0,0,0,.55)!important;overflow:hidden!important;border-left:1px solid #30384a!important}
+body.office-chat-open #viewChat.hidden{display:block!important}
+body.office-chat-open #viewChat .chat-layout{height:calc(100vh - 78px)!important;min-height:0!important;grid-template-columns:245px 1fr!important;gap:8px!important}
+body.office-chat-open #viewChat .chat-list,
+body.office-chat-open #viewChat .chat-panel{border-radius:12px!important;min-height:0!important}
+body.office-chat-open #viewChat #chatList{overflow:auto!important;max-height:calc(100vh - 130px)!important}
+body.office-chat-open #viewChat .chat-body{max-height:none!important;min-height:0!important;flex:1!important}
+body.office-chat-open #viewChat .chat-compose{padding:8px!important}
+body.office-chat-open #viewChat .chat-item{padding:8px!important}
+body.office-chat-open #viewChat .chat-bubble{font-size:12px!important;padding:8px 10px!important}
+body.office-chat-open #viewChat .transfer-send-box{margin-top:7px!important;padding-top:7px!important}
+body.office-chat-open #viewChat .transfer-send-grid{grid-template-columns:1fr auto!important}
+#officeChatClose{display:none;position:absolute;right:10px;top:10px;z-index:4}
+body.office-chat-open #officeChatClose{display:inline-block!important}
+body.office-chat-open #viewChat h1{font-size:18px!important}
+body.office-chat-open #viewChat>div:first-child{padding-right:80px!important;margin-bottom:8px!important}
+body.office-sidebar-mini .layout{grid-template-columns:58px minmax(0,1fr)!important}
+body.office-sidebar-mini .sidebar{padding:6px 4px!important}
+body.office-sidebar-mini .logo{width:42px!important}
+body.office-sidebar-mini .sidebar .card{display:none!important}
+body.office-sidebar-mini .nav-btn{font-size:0!important;text-align:center!important;padding:10px 4px!important}
+body.office-sidebar-mini #navInicio::before{content:'🏠';font-size:18px}
+body.office-sidebar-mini #navSolicitudes::before{content:'📋';font-size:18px}
+body.office-sidebar-mini #navBilleteras::before{content:'💳';font-size:18px}
+body.office-sidebar-mini #navChat::before{content:'💬';font-size:18px}
+body.office-sidebar-mini #navWorker::before{content:'⚙️';font-size:18px}
+body.office-sidebar-mini #navAjustes::before{content:'🧾';font-size:18px}
+@media(max-width:980px){
+ body.office-mode .layout{grid-template-columns:58px minmax(0,1fr)!important;display:grid!important;height:100vh!important}
+ body.office-mode .sidebar{display:block!important;padding:6px 4px!important}
+ body.office-mode .logo{display:none!important}
+ body.office-mode .sidebar .card{display:none!important}
+ body.office-mode .nav-btn{font-size:0!important;text-align:center!important;padding:10px 4px!important}
+ body.office-mode #navInicio::before{content:'🏠';font-size:18px}
+ body.office-mode #navSolicitudes::before{content:'📋';font-size:18px}
+ body.office-mode #navBilleteras::before{content:'💳';font-size:18px}
+ body.office-mode #navChat::before{content:'💬';font-size:18px}
+ body.office-mode #navWorker::before{content:'⚙️';font-size:18px}
+ body.office-mode #navAjustes::before{content:'🧾';font-size:18px}
+ body.office-mode .ops-kpis{grid-template-columns:repeat(2,minmax(110px,1fr))!important}
+ body.office-mode .ops-grid>div:nth-child(2){grid-template-columns:1fr!important}
+ body.office-mode .ops-grid>div:nth-child(2) .ops-panel:nth-child(2){max-width:none!important}
+ body.office-mode .ops-manual-grid{grid-template-columns:1fr 1fr!important}
+ body.office-mode .ops-table-wrap{max-height:calc(100vh - 455px)!important}
+ #officeDock{align-items:flex-start;flex-direction:column;gap:6px}
+ #officeDock .od-actions{justify-content:flex-start;width:100%}
+ body.office-chat-open #viewChat{width:calc(100vw - 8px)!important;padding:8px!important}
+ body.office-chat-open #viewChat .chat-layout{grid-template-columns:190px 1fr!important}
+}
+@media(max-width:700px){
+ body.office-mode .ops-manual-grid{grid-template-columns:1fr!important}
+ body.office-mode .ops-table-wrap{max-height:360px!important}
+ body.office-chat-open #viewChat .chat-layout{grid-template-columns:1fr!important}
+ body.office-chat-open #viewChat .chat-list{max-height:190px!important}
+}
+</style>
+<script>
+(function(){
+  if(window.__NODO_MODO_OFICINA_COMPACTO_V1__) return;
+  window.__NODO_MODO_OFICINA_COMPACTO_V1__ = true;
+
+  const $ = (id)=>document.getElementById(id);
+  const esc = (v)=> typeof escapeHtml === 'function' ? escapeHtml(v) : String(v||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+  const pesos = (v)=> typeof money === 'function' ? money(v) : Number(v||0).toLocaleString('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0});
+  const norm = (v)=> String(v||'').trim().toUpperCase();
+
+  function totalChatUnread(){
+    try{
+      if(typeof window.updateBadgeChatLateralV8 === 'function') return Number(window.updateBadgeChatLateralV8() || 0);
+      return (window.chats || chats || []).reduce((a,c)=>a+Number(c.SIN_LEER||0),0);
+    }catch(e){return 0;}
+  }
+
+  function installOfficeDock(){
+    if($('officeDock')) return;
+    const main = document.querySelector('main.main');
+    if(!main) return;
+    const dock = document.createElement('div');
+    dock.id = 'officeDock';
+    dock.innerHTML = `
+      <div class="od-left">
+        <button class="mini-btn gray" type="button" onclick="window.toggleOfficeSidebar()" title="Achicar/mostrar menú">☰</button>
+        <div style="min-width:0">
+          <div class="od-title">NODO · Oficina</div>
+          <div class="od-sub" id="officeDockSub">Vista compacta para operar con ventana chica.</div>
+        </div>
+      </div>
+      <div class="od-actions">
+        <span class="office-chip green" id="officePcChip">PC</span>
+        <button class="mini-btn blue" type="button" onclick="mostrarVista('inicio')">Cola</button>
+        <button class="mini-btn green office-chat-button" id="officeChatBtn" type="button" onclick="window.openOfficeChat()">Chat <span class="bubble" id="officeChatBubble">0</span></button>
+        <button class="mini-btn yellow" type="button" onclick="mostrarVista('ajustes')">Ajustes</button>
+        <button class="mini-btn blue" type="button" onclick="refrescarTodo(true)">Actualizar</button>
+      </div>`;
+    main.prepend(dock);
+  }
+
+  function installCloseButton(){
+    if($('officeChatClose')) return;
+    const view = $('viewChat');
+    if(!view) return;
+    const btn = document.createElement('button');
+    btn.id = 'officeChatClose';
+    btn.className = 'mini-btn red';
+    btn.type = 'button';
+    btn.textContent = 'Cerrar chat';
+    btn.onclick = ()=>window.closeOfficeChat();
+    view.prepend(btn);
+  }
+
+  window.toggleOfficeSidebar = function(){
+    document.body.classList.toggle('office-sidebar-mini');
+    try{ localStorage.setItem('nodo_office_sidebar_mini', document.body.classList.contains('office-sidebar-mini') ? '1' : '0'); }catch(e){}
+  };
+
+  window.openOfficeChat = async function(){
+    const view = $('viewChat');
+    if(!view) return;
+    document.body.classList.add('office-chat-open');
+    view.classList.remove('hidden');
+    installCloseButton();
+    try{ if(typeof cargarChats === 'function') await cargarChats(true); }catch(e){console.warn(e);}
+    updateOfficeDock();
+  };
+
+  window.closeOfficeChat = function(){
+    const view = $('viewChat');
+    document.body.classList.remove('office-chat-open');
+    if(view) view.classList.add('hidden');
+    updateOfficeDock();
+  };
+
+  function updateOfficeDock(){
+    const pc = (window.pcOperativa || (typeof pcOperativa !== 'undefined' ? pcOperativa : '') || '').toString();
+    const op = window.operador || (typeof operador !== 'undefined' ? operador : null) || {};
+    const unread = totalChatUnread();
+    const chip = $('officePcChip');
+    if(chip) chip.textContent = pc || 'PC';
+    const sub = $('officeDockSub');
+    if(sub) sub.textContent = `${op.nombre || op.usuario || 'Operador'} · ${pc || 'sin PC'} · ${unread} chat/s sin leer`;
+    const btn = $('officeChatBtn');
+    const bubble = $('officeChatBubble');
+    if(btn){ btn.classList.toggle('has-unread', unread > 0); }
+    if(bubble){ bubble.textContent = unread > 99 ? '99+' : String(unread); }
+  }
+  window.updateOfficeDock = updateOfficeDock;
+
+  // KPIs del inicio: queda el saldo agente en vivo como tarjeta principal y se quita el KPI duplicado de "Fichas agente".
+  window.renderOpsKpis = function(){
+    try{
+      const pendientes=(window.solicitudes||solicitudes||[]).filter(typeof esPendiente==='function'?esPendiente:(s)=>false);
+      const jobs=(window.workerJobs||workerJobs||[]);
+      const activos=jobs.filter(j=>['PENDIENTE','PROCESANDO','REINTENTAR','ERROR','ERROR_JOB','REQUIERE_MANUAL'].includes(norm(j.estado)));
+      const errores=jobs.filter(j=>['REINTENTAR','ERROR','ERROR_JOB','REQUIERE_MANUAL'].includes(norm(j.estado)));
+      const unread=totalChatUnread();
+      const bs=(window.saldosOperativos||saldosOperativos||{})?.billeteras||[];
+      const total=bs.reduce((a,b)=>a+Number(b.saldo||0),0);
+      if(typeof setBox === 'function') setBox('opsKpis', `
+        <div class="ops-kpi"><div class="ops-kpi-title">Total billeteras</div><div class="ops-kpi-value">${pesos(total)}</div><div class="ops-kpi-sub">${bs.length} billetera/s</div></div>
+        <div class="ops-kpi"><div class="ops-kpi-title">Pendientes</div><div class="ops-kpi-value">${pendientes.length}</div><div class="ops-kpi-sub">Landing sin cerrar</div></div>
+        <div class="ops-kpi"><div class="ops-kpi-title">Worker / cola</div><div class="ops-kpi-value">${activos.length}</div><div class="ops-kpi-sub">${errores.length} error/reintento</div></div>
+        <div class="ops-kpi"><div class="ops-kpi-title">Chats</div><div class="ops-kpi-value">${unread}</div><div class="ops-kpi-sub">Sin leer</div></div>`);
+      updateOfficeDock();
+    }catch(e){ console.warn('renderOpsKpis oficina', e); }
+  };
+  try{ renderOpsKpis = window.renderOpsKpis; }catch(e){}
+
+  const oldMostrarVista = window.mostrarVista;
+  window.mostrarVista = function(vista){
+    if(vista !== 'chat') document.body.classList.remove('office-chat-open');
+    const r = typeof oldMostrarVista === 'function' ? oldMostrarVista.apply(this, arguments) : undefined;
+    setTimeout(updateOfficeDock, 80);
+    return r;
+  };
+  try{ mostrarVista = window.mostrarVista; }catch(e){}
+
+  const oldUpdateBadge = window.updateBadgeChatLateralV8;
+  if(typeof oldUpdateBadge === 'function'){
+    window.updateBadgeChatLateralV8 = function(){
+      const r = oldUpdateBadge.apply(this, arguments);
+      setTimeout(updateOfficeDock, 0);
+      return r;
+    };
+  }
+
+  const oldRenderCentro = window.renderCentroOperativo;
+  window.renderCentroOperativo = function(){
+    const r = typeof oldRenderCentro === 'function' ? oldRenderCentro.apply(this, arguments) : undefined;
+    try{ window.renderOpsKpis(); }catch(e){}
+    updateOfficeDock();
+    return r;
+  };
+  try{ renderCentroOperativo = window.renderCentroOperativo; }catch(e){}
+
+  function initOfficeMode(){
+    document.body.classList.add('office-mode');
+    if(localStorage.getItem('nodo_office_sidebar_mini') === '1') document.body.classList.add('office-sidebar-mini');
+    installOfficeDock();
+    installCloseButton();
+    updateOfficeDock();
+    setTimeout(()=>{ try{ if(typeof renderCentroOperativo === 'function') renderCentroOperativo(); }catch(e){} }, 600);
+    setInterval(updateOfficeDock, 2500);
+  }
+
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initOfficeMode);
+  else initOfficeMode();
+})();
+</script>
+
 </body>
 </html>
