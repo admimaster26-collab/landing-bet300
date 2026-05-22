@@ -6520,5 +6520,253 @@ body.nodo-ux-safe .ops-main-table td,body.nodo-ux-safe .ops-main-table th{font-s
 })();
 </script>
 
+
+
+<style>
+/* =========================================================
+   NODO V4 · COMPACTO MENU + KPIS
+   - Menú lateral más angosto y alto útil.
+   - Quita KPIs redundantes: fichas agente y total billeteras.
+   - Pendientes / Worker / Chats quedan chicos en una fila.
+   - En ventanas chicas mantiene más espacio para Acción rápida, chat y cola.
+========================================================= */
+body.nodo-compact-menu .layout{
+  grid-template-columns:220px minmax(0,1fr)!important;
+}
+body.nodo-compact-menu .sidebar{
+  padding:10px!important;
+  overflow-y:auto!important;
+}
+body.nodo-compact-menu .sidebar .logo{
+  width:112px!important;
+  max-height:34px!important;
+  object-fit:contain!important;
+  margin:0 auto 10px!important;
+}
+body.nodo-compact-menu .sidebar .card{
+  padding:10px!important;
+  margin-bottom:10px!important;
+  border-radius:14px!important;
+}
+body.nodo-compact-menu #operadorInfo{
+  font-size:12px!important;
+  line-height:1.25!important;
+}
+body.nodo-compact-menu #operadorInfo b,
+body.nodo-compact-menu #operadorInfo strong{
+  font-size:15px!important;
+}
+body.nodo-compact-menu .sidebar .badge,
+body.nodo-compact-menu .sidebar .badge-ok,
+body.nodo-compact-menu .sidebar .badge-blue,
+body.nodo-compact-menu .sidebar .badge-muted{
+  padding:4px 7px!important;
+  font-size:10px!important;
+  margin:2px!important;
+}
+body.nodo-compact-menu .nav-btn{
+  padding:9px 10px!important;
+  margin-bottom:6px!important;
+  border-radius:11px!important;
+  font-size:13px!important;
+  min-height:35px!important;
+}
+body.nodo-compact-menu .badge-alert{
+  right:8px!important;
+  top:7px!important;
+  min-width:18px!important;
+  height:18px!important;
+  font-size:10px!important;
+}
+body.nodo-compact-menu .main{
+  padding:12px!important;
+}
+body.nodo-compact-menu .ops-head{
+  margin-bottom:8px!important;
+  gap:8px!important;
+}
+body.nodo-compact-menu .ops-title{
+  font-size:25px!important;
+  line-height:1.05!important;
+}
+body.nodo-compact-menu .ops-sub{
+  font-size:12px!important;
+}
+body.nodo-compact-menu .ops-kpis{
+  display:grid!important;
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  gap:8px!important;
+  margin:8px 0 10px!important;
+}
+body.nodo-compact-menu .ops-kpi{
+  padding:9px 11px!important;
+  border-radius:13px!important;
+  min-height:58px!important;
+}
+body.nodo-compact-menu .ops-kpi-title{
+  font-size:10px!important;
+  margin-bottom:4px!important;
+  letter-spacing:.4px!important;
+}
+body.nodo-compact-menu .ops-kpi-value{
+  font-size:22px!important;
+  line-height:1!important;
+}
+body.nodo-compact-menu .ops-kpi-sub{
+  font-size:10px!important;
+  margin-top:4px!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+body.nodo-compact-menu .ops-wallet-strip{
+  gap:8px!important;
+  margin-bottom:10px!important;
+  grid-template-columns:repeat(auto-fit,minmax(165px,1fr))!important;
+}
+body.nodo-compact-menu .ops-wallet{
+  padding:10px!important;
+  border-radius:14px!important;
+}
+body.nodo-compact-menu .ops-wallet-name{
+  font-size:13px!important;
+  margin-bottom:3px!important;
+}
+body.nodo-compact-menu .ops-wallet-saldo{
+  font-size:18px!important;
+  margin-bottom:3px!important;
+}
+body.nodo-compact-menu .ops-wallet-meta{
+  font-size:10px!important;
+  line-height:1.25!important;
+}
+body.nodo-compact-menu .ops-wallet-actions{
+  gap:5px!important;
+  margin-top:7px!important;
+}
+body.nodo-compact-menu .ops-wallet-actions .mini-btn{
+  padding:6px 8px!important;
+  font-size:10px!important;
+}
+body.nodo-compact-menu .ops-grid{
+  grid-template-columns:minmax(0,1.25fr) minmax(300px,.75fr)!important;
+  gap:10px!important;
+}
+body.nodo-compact-menu .ops-panel{
+  padding:12px!important;
+  border-radius:15px!important;
+  margin-bottom:10px!important;
+}
+body.nodo-compact-menu .ops-panel-title{
+  font-size:17px!important;
+}
+body.nodo-compact-menu .ops-alert{
+  padding:8px 10px!important;
+  font-size:11px!important;
+  margin-bottom:8px!important;
+}
+body.nodo-compact-menu .ops-manual-grid{
+  gap:8px!important;
+}
+body.nodo-compact-menu label{
+  font-size:12px!important;
+  margin-bottom:3px!important;
+}
+body.nodo-compact-menu input,
+body.nodo-compact-menu select,
+body.nodo-compact-menu textarea{
+  padding:9px 10px!important;
+  margin-top:4px!important;
+  margin-bottom:8px!important;
+  border-radius:9px!important;
+  font-size:13px!important;
+}
+body.nodo-compact-menu .btn{
+  padding:10px 12px!important;
+  border-radius:11px!important;
+}
+body.nodo-compact-menu .table-wrap,
+body.nodo-compact-menu .nodo-stable-scroll{
+  max-height:calc(100vh - 190px)!important;
+}
+@media(max-width:1220px){
+  body.nodo-compact-menu .layout{grid-template-columns:190px minmax(0,1fr)!important;}
+  body.nodo-compact-menu .sidebar .logo{width:90px!important;margin-bottom:8px!important;}
+  body.nodo-compact-menu .nav-btn{font-size:12px!important;padding:8px 9px!important;}
+  body.nodo-compact-menu .ops-grid{grid-template-columns:1fr!important;}
+  body.nodo-compact-menu .ops-kpis{grid-template-columns:repeat(3,minmax(0,1fr))!important;}
+}
+@media(max-width:980px){
+  body.nodo-compact-menu .ops-kpis{grid-template-columns:1fr 1fr 1fr!important;}
+  body.nodo-compact-menu .ops-kpi-value{font-size:18px!important;}
+}
+</style>
+
+<script>
+/* =========================================================
+   NODO V4 · COMPACTO MENU + KPIS
+   Reemplaza renderOpsKpis sin tocar worker ni Agentes.
+========================================================= */
+(function(){
+  function ready(fn){
+    if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
+    else fn();
+  }
+  ready(()=>document.body.classList.add('nodo-compact-menu'));
+
+  function n(v){
+    try{
+      if(typeof normalizar === 'function') return normalizar(v);
+    }catch(e){}
+    return String(v||'').trim().toUpperCase();
+  }
+  function h(v){
+    try{
+      if(typeof escapeHtml === 'function') return escapeHtml(v);
+    }catch(e){}
+    return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  }
+  function put(id, html){
+    const el=document.getElementById(id);
+    if(el) el.innerHTML=html;
+  }
+
+  window.renderOpsKpis = function renderOpsKpisCompacto(){
+    const sols = (typeof solicitudes !== 'undefined' && Array.isArray(solicitudes)) ? solicitudes : (window.solicitudes || []);
+    const jobs = (typeof workerJobs !== 'undefined' && Array.isArray(workerJobs)) ? workerJobs : (window.workerJobs || []);
+    const chatList = (typeof chats !== 'undefined' && Array.isArray(chats)) ? chats : (window.chats || []);
+
+    const pendientes = sols.filter(s=>{
+      try{ return typeof esPendiente === 'function' ? esPendiente(s) : ['PENDIENTE','NUEVA','NUEVO','EN_REVISION'].includes(n(s.estado||s.ESTADO)); }
+      catch(e){ return false; }
+    });
+    const activos = jobs.filter(j=>['PENDIENTE','PROCESANDO','REINTENTAR','ERROR','ERROR_JOB','REQUIERE_MANUAL'].includes(n(j.estado||j.ESTADO)));
+    const errores = jobs.filter(j=>['REINTENTAR','ERROR','ERROR_JOB','REQUIERE_MANUAL'].includes(n(j.estado||j.ESTADO)));
+    let unread = 0;
+    try{
+      unread = typeof window.updateBadgeChatLateralV8 === 'function'
+        ? window.updateBadgeChatLateralV8()
+        : chatList.reduce((a,c)=>a+Number(c.SIN_LEER||c.sin_leer||0),0);
+    }catch(e){ unread = chatList.reduce((a,c)=>a+Number(c.SIN_LEER||c.sin_leer||0),0); }
+
+    put('opsKpis', `
+      <div class="ops-kpi"><div class="ops-kpi-title">Pendientes landing</div><div class="ops-kpi-value">${pendientes.length}</div><div class="ops-kpi-sub">Solicitudes sin cerrar</div></div>
+      <div class="ops-kpi"><div class="ops-kpi-title">Worker activo</div><div class="ops-kpi-value">${activos.length}</div><div class="ops-kpi-sub">${errores.length} error/reintento/manual</div></div>
+      <div class="ops-kpi"><div class="ops-kpi-title">Chats sin leer</div><div class="ops-kpi-value">${unread}</div><div class="ops-kpi-sub">Consultas por landing</div></div>
+    `);
+  };
+
+  const oldRenderCentro = window.renderCentroOperativo;
+  window.renderCentroOperativo = function(){
+    try{ window.renderOpsKpis(); }catch(e){ console.warn('renderOpsKpis compacto', e); }
+    try{ if(typeof renderOpsWallets === 'function') renderOpsWallets(); }catch(e){}
+    try{ if(typeof renderColaUnificada === 'function') renderColaUnificada(); }catch(e){}
+    try{ if(typeof renderWalletSelectWorkerInicio === 'function') renderWalletSelectWorkerInicio(); }catch(e){}
+  };
+
+  ready(()=>setTimeout(()=>{ try{ window.renderOpsKpis(); }catch(e){} }, 400));
+})();
+</script>
+
 </body>
 </html>
