@@ -6312,12 +6312,31 @@ body.nodo-ux-safe .ops-main-table td,body.nodo-ux-safe .ops-main-table th{font-s
     return found ? Object.assign({}, found._raw || {}, {ID_BILLETERA:found.id, id:found.id, NOMBRE_VISIBLE:found.nombre, nombre_visible:found.nombre, BILLETERA_NOMBRE:found.nombre, TIPO:found.banco, banco:found.banco, TITULAR:found.titular, titular:found.titular, alias:found.alias, ALIAS:found.alias}) : null;
   };
 
+  function lastWalletKey(){ return 'nodo_last_wallet_' + String(window.pcOperativa || (typeof pcOperativa !== 'undefined' ? pcOperativa : 'PC')) ; }
+  function rememberLastWallet(id){
+    const v = String(id || '').trim();
+    if(!v) return;
+    try{ localStorage.setItem(lastWalletKey(), v); }catch(e){}
+  }
+  function readLastWallet(){
+    try{ return String(localStorage.getItem(lastWalletKey()) || '').trim(); }catch(e){ return ''; }
+  }
+  function optionExists(sel, value){ return !!(sel && Array.from(sel.options || []).some(o=>String(o.value)===String(value))); }
+  function restoreLastWallet(selectId, preferred){
+    const sel = $(selectId); if(!sel) return '';
+    const v = String(preferred || sel.value || readLastWallet() || '').trim();
+    if(v && optionExists(sel, v)){
+      sel.value = v;
+      return v;
+    }
+    return sel.value || '';
+  }
   function renderWalletOptions(selectId, allowBlankText){
     const sel = $(selectId); if(!sel) return;
-    const previous = sel.value;
+    const previous = sel.value || readLastWallet();
     const list = listaWalletsBase().filter(w => w.activa || w.saldo !== 0);
     sel.innerHTML = `<option value="">${esc(allowBlankText || 'Seleccionar billetera')}</option>` + list.map(w=>`<option value="${attr(w.id)}">${esc(w.nombre)} · ${esc(w.banco)}${w.saldo?(' · '+moneySafe(w.saldo)):''}</option>`).join('');
-    if(previous && Array.from(sel.options).some(o=>String(o.value)===String(previous))) sel.value = previous;
+    restoreLastWallet(selectId, previous);
   }
   window.renderWalletSelectWorkerManual = renderWalletSelectWorkerManual = function(){ renderWalletOptions('manualWorkerBilletera','No aplica / seleccionar billetera'); };
   window.renderWalletSelectWorkerInicio = renderWalletSelectWorkerInicio = function(){ renderWalletOptions('manualWorkerBilleteraInicio','No aplica / seleccionar billetera'); };
@@ -6346,7 +6365,13 @@ body.nodo-ux-safe .ops-main-table td,body.nodo-ux-safe .ops-main-table th{font-s
     const p = $(previewId);
     if(p) p.innerHTML = `<span class="nodo-auto-action-preview ${r.cls}">${esc(r.label)}${r.monto?(' · '+moneySafe(r.monto)):''}</span>`;
     const wallet = $(walletId);
-    if(wallet){ wallet.disabled = r.tipo === 'VALIDAR_USUARIO'; if(r.tipo === 'VALIDAR_USUARIO') wallet.value = ''; }
+    if(wallet){
+      // No borrar la billetera cuando el monto está vacío/0.
+      // La dejamos deshabilitada en VALIDAR_USUARIO, pero conservada para la próxima carga/retiro.
+      restoreLastWallet(walletId);
+      wallet.disabled = r.tipo === 'VALIDAR_USUARIO';
+      if(r.tipo !== 'VALIDAR_USUARIO') restoreLastWallet(walletId);
+    }
     return r;
   }
   function hideLegacyType(selectId){
@@ -6384,6 +6409,7 @@ body.nodo-ux-safe .ops-main-table td,body.nodo-ux-safe .ops-main-table th{font-s
 
     if(!usuario){ setBox(out, `<div class="err-box">Ingresá un usuario.</div>`); return; }
     if(inf.tipo !== 'VALIDAR_USUARIO' && !billeteraId){ setBox(out, `<div class="err-box">Seleccioná la billetera impactada.</div>`); return; }
+    if(billeteraId) rememberLastWallet(billeteraId);
 
     if($('manualWorkerTipo')) $('manualWorkerTipo').value = inf.tipo;
     if($('manualWorkerMonto')) $('manualWorkerMonto').value = String(inf.monto || 0);
@@ -6411,12 +6437,16 @@ body.nodo-ux-safe .ops-main-table td,body.nodo-ux-safe .ops-main-table th{font-s
     if(r && r.ok === false){ setBox(out, `<div class="err-box">${esc(r.error || r.mensaje || 'No se pudo crear el job.')}</div>`); return; }
     setBox(out, `<div class="ok-box">${esc(inf.label)} enviada al worker. Job: <b>${esc(r?.job_id || r?.id || '-')}</b></div>`);
 
-    // Agiliza siguiente movimiento: limpia usuario/monto/obs, conserva billetera.
+    // Agiliza siguiente movimiento: limpia usuario/monto/obs, conserva la última billetera usada.
+    const walletToKeep = billeteraId || readLastWallet();
+    if(walletToKeep) rememberLastWallet(walletToKeep);
     if($(cfg.usuario)) $(cfg.usuario).value = '';
     if($(cfg.monto)) $(cfg.monto).value = '';
     if($(cfg.obs)) $(cfg.obs).value = '';
+    restoreLastWallet(cfg.billetera, walletToKeep);
     updatePreview(cfg.monto, cfg.preview, cfg.billetera);
     try{ await refrescarTodo(false); }catch(e){}
+    setTimeout(()=>{ restoreLastWallet(cfg.billetera, walletToKeep); updatePreview(cfg.monto, cfg.preview, cfg.billetera); }, 150);
   }
   window.crearWorkerJobManualInicio = crearWorkerJobManualInicio = async function(){
     await crearJobIntuitivo({usuario:'manualWorkerUsuarioInicio', monto:'manualWorkerMontoInicio', billetera:'manualWorkerBilleteraInicio', obs:'manualWorkerObsInicio', out:'manualWorkerResultadoInicio', preview:'nodoPreviewInicio'});
@@ -6469,7 +6499,22 @@ body.nodo-ux-safe .ops-main-table td,body.nodo-ux-safe .ops-main-table th{font-s
   }, true);
   function markZoomable(){ document.querySelectorAll('.chat-bubble img,#chatBody img,.verify-box img,.modal img').forEach(img=>{ if(!img.classList.contains('logo')) img.classList.add('nodo-img-zoomable'); }); }
   const mo=new MutationObserver(()=>markZoomable());
-  document.addEventListener('DOMContentLoaded',()=>{ installIntuitiveUI(); markZoomable(); mo.observe(document.body,{subtree:true,childList:true}); renderWalletSelectWorkerInicio(); renderWalletSelectWorkerManual(); });
+  document.addEventListener('DOMContentLoaded',()=>{
+    installIntuitiveUI();
+    ['manualWorkerBilleteraInicio','manualWorkerBilletera'].forEach(id=>{
+      const el=$(id);
+      if(el && !el.dataset.nodoRememberWallet){
+        el.dataset.nodoRememberWallet='1';
+        el.addEventListener('change',()=>{ if(el.value) rememberLastWallet(el.value); });
+      }
+    });
+    markZoomable();
+    mo.observe(document.body,{subtree:true,childList:true});
+    renderWalletSelectWorkerInicio();
+    renderWalletSelectWorkerManual();
+    restoreLastWallet('manualWorkerBilleteraInicio');
+    restoreLastWallet('manualWorkerBilletera');
+  });
   window.addEventListener('load',()=>setTimeout(()=>{ installIntuitiveUI(); try{ renderBilleteras(); renderOpsWallets(); renderWalletSelectWorkerInicio(); renderWalletSelectWorkerManual(); }catch(e){} },900));
 
 })();
