@@ -5715,289 +5715,400 @@ async function cerrarSesion(){
 </script>
 
 
+
 <!-- =========================================================
-  NODO OPERATIVO · MODO OFICINA COMPACTO V1
-  Solo UX/vista. No toca RPC, SQL, worker ni flujos existentes.
+     NODO OPERATIVO · MP DETECTADOS + WORKER LIVE PATCH V20
+     - No toca acción rápida ni flujo estable.
+     - Agrega vista Pagos MP detectados.
+     - Confirma / descarta match MP con operador humano.
+     - Refresca worker directo cada 1.5s y por Realtime sin esperar F5.
 ========================================================= -->
 <style>
-body.office-mode{overflow:hidden!important;background:#080b12!important}
-body.office-mode .layout{grid-template-columns:122px minmax(0,1fr)!important;height:100vh!important;min-height:0!important}
-body.office-mode .sidebar{padding:8px!important;overflow:hidden auto!important;background:#101522!important}
-body.office-mode .logo{width:70px!important;margin:0 auto 8px!important}
-body.office-mode .sidebar .card{padding:8px!important;margin-bottom:8px!important;border-radius:12px!important}
-body.office-mode #operadorInfo{font-size:10px!important;line-height:1.15!important}
-body.office-mode #operadorInfo b, body.office-mode #operadorInfo strong{font-size:12px!important}
-body.office-mode .nav-btn{padding:8px 7px!important;margin-bottom:6px!important;border-radius:10px!important;font-size:11px!important;line-height:1.05!important;white-space:normal!important;text-align:left!important}
-body.office-mode .badge-alert{right:6px!important;top:5px!important;min-width:18px!important;height:18px!important;font-size:10px!important}
-body.office-mode .badge-chat{right:28px!important}
-body.office-mode .main{padding:8px!important;overflow:auto!important;min-width:0!important}
-body.office-mode .mobile-top{display:none!important}
-body.office-mode .ops-head{margin-bottom:6px!important;align-items:center!important}
-body.office-mode .ops-title{font-size:18px!important;line-height:1.05!important}
-body.office-mode .ops-sub{font-size:10px!important}
-body.office-mode .ops-compact-actions{gap:5px!important}
-body.office-mode .mini-btn{padding:6px 8px!important;font-size:11px!important;border-radius:8px!important}
-body.office-mode #alertas{display:none!important}
-body.office-mode .agent-rt-card{margin-bottom:8px!important;padding:9px 11px!important;border-radius:13px!important}
-body.office-mode .agent-rt-title{font-size:11px!important;letter-spacing:.25px!important}
-body.office-mode .agent-rt-value{font-size:23px!important;line-height:1!important}
-body.office-mode .agent-rt-meta{font-size:10px!important}
-body.office-mode .agent-rt-status{font-size:10px!important;padding:5px 8px!important}
-body.office-mode .ops-kpis{grid-template-columns:repeat(4,minmax(110px,1fr))!important;gap:7px!important;margin-bottom:8px!important}
-body.office-mode .ops-kpi{padding:8px!important;border-radius:12px!important}
-body.office-mode .ops-kpi-title{font-size:9px!important;margin-bottom:4px!important}
-body.office-mode .ops-kpi-value{font-size:18px!important;line-height:1!important}
-body.office-mode .ops-kpi-sub{font-size:9px!important;margin-top:3px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-body.office-mode .ops-wallet-strip{display:flex!important;overflow-x:auto!important;gap:7px!important;margin-bottom:8px!important;padding-bottom:2px!important;scrollbar-width:thin!important}
-body.office-mode .ops-wallet{min-width:170px!important;max-width:210px!important;padding:8px!important;border-radius:12px!important}
-body.office-mode .ops-wallet-name{font-size:12px!important;margin-bottom:3px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-body.office-mode .ops-wallet-saldo{font-size:17px!important;margin-bottom:2px!important}
-body.office-mode .ops-wallet-meta{font-size:9.5px!important;line-height:1.25!important;max-height:25px!important;overflow:hidden!important}
-body.office-mode .ops-wallet-actions{margin-top:5px!important;gap:4px!important}
-body.office-mode .ops-wallet-actions .mini-btn{font-size:10px!important;padding:5px 6px!important}
-body.office-mode .ops-grid{grid-template-columns:1fr!important;gap:8px!important}
-body.office-mode .ops-grid>div:nth-child(2){order:-1!important;display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:8px!important;align-items:start!important}
-body.office-mode .ops-grid>div:nth-child(2) .ops-panel{margin-bottom:0!important}
-body.office-mode .ops-grid>div:nth-child(2) .ops-panel:nth-child(2){min-width:180px!important;max-width:210px!important}
-body.office-mode .ops-panel{padding:8px!important;border-radius:12px!important;margin-bottom:8px!important}
-body.office-mode .ops-panel-title{font-size:14px!important;margin-bottom:6px!important}
-body.office-mode .ops-alert{display:none!important}
-body.office-mode .ops-manual-grid{display:grid!important;grid-template-columns:1.05fr .9fr .62fr 1.1fr .9fr!important;gap:6px!important;align-items:end!important}
-body.office-mode .ops-manual-grid label{font-size:10px!important;margin-bottom:3px!important}
-body.office-mode .ops-manual-grid input,
-body.office-mode .ops-manual-grid select{padding:7px 8px!important;font-size:12px!important;border-radius:8px!important;margin:0!important;height:32px!important}
-body.office-mode #manualWorkerResultadoInicio{font-size:11px!important;margin-top:6px!important;max-height:48px!important;overflow:auto!important}
-body.office-mode .btn{padding:8px!important;border-radius:9px!important;font-size:12px!important}
-body.office-mode .ops-table-wrap{max-height:calc(100vh - 355px)!important;min-height:220px!important;border-radius:11px!important}
-body.office-mode .ops-main-table th,
-body.office-mode .ops-main-table td{font-size:10.5px!important;padding:6px 7px!important;line-height:1.15!important}
-body.office-mode .ops-origin{font-size:9px!important;padding:3px 5px!important}
-body.office-mode .badge{font-size:9px!important;padding:4px 6px!important}
-body.office-mode .worker-error-chip{font-size:9.5px!important;padding:4px 5px!important;max-width:160px!important;display:inline-block!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
-body.office-mode .card{padding:10px!important;margin-bottom:10px!important;border-radius:12px!important}
-body.office-mode .card-title{font-size:16px!important;margin-bottom:8px!important}
-body.office-mode .filters{gap:6px!important;margin-bottom:8px!important}
-body.office-mode .filters input,
-body.office-mode .filters select{padding:7px 8px!important;font-size:12px!important;margin:0!important;height:32px!important}
-body.office-mode .table-wrap{max-height:calc(100vh - 165px)!important}
-body.office-mode table th, body.office-mode table td{font-size:10.5px!important;padding:6px!important}
-#officeDock{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#111827;border:1px solid #2c3140;border-radius:13px;padding:7px 9px;margin-bottom:8px;position:sticky;top:0;z-index:50;box-shadow:0 10px 22px rgba(0,0,0,.20)}
-#officeDock .od-left{display:flex;align-items:center;gap:8px;min-width:0}
-#officeDock .od-title{font-weight:900;font-size:12px;white-space:nowrap}
-#officeDock .od-sub{color:#98a2b3;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
-#officeDock .od-actions{display:flex;gap:5px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
-.office-chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:5px 8px;font-size:10px;font-weight:900;background:#172033;border:1px solid #30384a;color:#fff;white-space:nowrap}
-.office-chip.green{background:#11371f;color:#b9f7cb;border-color:rgba(18,183,106,.45)}
-.office-chip.warn{background:#332509;color:#ffd98f;border-color:rgba(253,176,34,.45)}
-.office-chat-button{position:relative!important}
-.office-chat-button .bubble{position:absolute;right:-5px;top:-5px;background:#ff3b30;color:#fff;border-radius:999px;min-width:17px;height:17px;display:none;align-items:center;justify-content:center;font-size:9px;font-weight:900}
-.office-chat-button.has-unread .bubble{display:flex}
-body.office-chat-open #viewChat{display:block!important;position:fixed!important;right:0!important;top:0!important;bottom:0!important;width:min(820px,calc(100vw - 20px))!important;background:#0e1014!important;z-index:9000!important;padding:10px!important;box-shadow:-18px 0 55px rgba(0,0,0,.55)!important;overflow:hidden!important;border-left:1px solid #30384a!important}
-body.office-chat-open #viewChat.hidden{display:block!important}
-body.office-chat-open #viewChat .chat-layout{height:calc(100vh - 78px)!important;min-height:0!important;grid-template-columns:245px 1fr!important;gap:8px!important}
-body.office-chat-open #viewChat .chat-list,
-body.office-chat-open #viewChat .chat-panel{border-radius:12px!important;min-height:0!important}
-body.office-chat-open #viewChat #chatList{overflow:auto!important;max-height:calc(100vh - 130px)!important}
-body.office-chat-open #viewChat .chat-body{max-height:none!important;min-height:0!important;flex:1!important}
-body.office-chat-open #viewChat .chat-compose{padding:8px!important}
-body.office-chat-open #viewChat .chat-item{padding:8px!important}
-body.office-chat-open #viewChat .chat-bubble{font-size:12px!important;padding:8px 10px!important}
-body.office-chat-open #viewChat .transfer-send-box{margin-top:7px!important;padding-top:7px!important}
-body.office-chat-open #viewChat .transfer-send-grid{grid-template-columns:1fr auto!important}
-#officeChatClose{display:none;position:absolute;right:10px;top:10px;z-index:4}
-body.office-chat-open #officeChatClose{display:inline-block!important}
-body.office-chat-open #viewChat h1{font-size:18px!important}
-body.office-chat-open #viewChat>div:first-child{padding-right:80px!important;margin-bottom:8px!important}
-body.office-sidebar-mini .layout{grid-template-columns:58px minmax(0,1fr)!important}
-body.office-sidebar-mini .sidebar{padding:6px 4px!important}
-body.office-sidebar-mini .logo{width:42px!important}
-body.office-sidebar-mini .sidebar .card{display:none!important}
-body.office-sidebar-mini .nav-btn{font-size:0!important;text-align:center!important;padding:10px 4px!important}
-body.office-sidebar-mini #navInicio::before{content:'🏠';font-size:18px}
-body.office-sidebar-mini #navSolicitudes::before{content:'📋';font-size:18px}
-body.office-sidebar-mini #navBilleteras::before{content:'💳';font-size:18px}
-body.office-sidebar-mini #navChat::before{content:'💬';font-size:18px}
-body.office-sidebar-mini #navWorker::before{content:'⚙️';font-size:18px}
-body.office-sidebar-mini #navAjustes::before{content:'🧾';font-size:18px}
-@media(max-width:980px){
- body.office-mode .layout{grid-template-columns:58px minmax(0,1fr)!important;display:grid!important;height:100vh!important}
- body.office-mode .sidebar{display:block!important;padding:6px 4px!important}
- body.office-mode .logo{display:none!important}
- body.office-mode .sidebar .card{display:none!important}
- body.office-mode .nav-btn{font-size:0!important;text-align:center!important;padding:10px 4px!important}
- body.office-mode #navInicio::before{content:'🏠';font-size:18px}
- body.office-mode #navSolicitudes::before{content:'📋';font-size:18px}
- body.office-mode #navBilleteras::before{content:'💳';font-size:18px}
- body.office-mode #navChat::before{content:'💬';font-size:18px}
- body.office-mode #navWorker::before{content:'⚙️';font-size:18px}
- body.office-mode #navAjustes::before{content:'🧾';font-size:18px}
- body.office-mode .ops-kpis{grid-template-columns:repeat(2,minmax(110px,1fr))!important}
- body.office-mode .ops-grid>div:nth-child(2){grid-template-columns:1fr!important}
- body.office-mode .ops-grid>div:nth-child(2) .ops-panel:nth-child(2){max-width:none!important}
- body.office-mode .ops-manual-grid{grid-template-columns:1fr 1fr!important}
- body.office-mode .ops-table-wrap{max-height:calc(100vh - 455px)!important}
- #officeDock{align-items:flex-start;flex-direction:column;gap:6px}
- #officeDock .od-actions{justify-content:flex-start;width:100%}
- body.office-chat-open #viewChat{width:calc(100vw - 8px)!important;padding:8px!important}
- body.office-chat-open #viewChat .chat-layout{grid-template-columns:190px 1fr!important}
-}
-@media(max-width:700px){
- body.office-mode .ops-manual-grid{grid-template-columns:1fr!important}
- body.office-mode .ops-table-wrap{max-height:360px!important}
- body.office-chat-open #viewChat .chat-layout{grid-template-columns:1fr!important}
- body.office-chat-open #viewChat .chat-list{max-height:190px!important}
-}
+.mp-detect-panel{border:1px solid rgba(18,183,106,.35);background:linear-gradient(145deg,rgba(18,183,106,.08),rgba(61,90,254,.06));border-radius:16px;padding:14px;margin-bottom:14px}
+.mp-detect-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.mp-detect-title{font-size:18px;font-weight:900}.mp-detect-sub{font-size:12px;color:#98a2b3;margin-top:3px}
+.mp-card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+.mp-card{background:#121a27;border:1px solid #30384a;border-radius:15px;padding:12px}
+.mp-card.match{border-color:rgba(18,183,106,.48)}.mp-card.revision{border-color:rgba(253,176,34,.55)}.mp-card.confirmado{border-color:rgba(61,90,254,.60)}
+.mp-card-top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;margin-bottom:8px}
+.mp-score{font-size:22px;font-weight:900}.mp-score.good{color:#b9f7cb}.mp-score.warn{color:#ffd98f}.mp-score.info{color:#cbd5ff}
+.mp-meta{font-size:12px;color:#98a2b3;line-height:1.35}.mp-amount{font-size:21px;font-weight:900;color:#fff;margin:5px 0}.mp-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.mp-pill{display:inline-block;border-radius:999px;padding:5px 8px;font-size:11px;font-weight:900}.mp-pill.ok{background:#11371f;color:#b9f7cb}.mp-pill.warn{background:#5a3d09;color:#ffd98f}.mp-pill.info{background:#16235f;color:#cbd5ff}.mp-pill.off{background:#3a1515;color:#ffd0d0}
+.worker-live-dot{display:inline-block;width:8px;height:8px;border-radius:999px;background:#12b76a;margin-right:5px;box-shadow:0 0 0 3px rgba(18,183,106,.12)}
+.worker-live-small{font-size:11px;color:#98a2b3;margin-left:6px}
+@media(max-width:1100px){.mp-card-grid{grid-template-columns:1fr}.mp-detect-head{align-items:flex-start}}
 </style>
 <script>
 (function(){
-  if(window.__NODO_MODO_OFICINA_COMPACTO_V1__) return;
-  window.__NODO_MODO_OFICINA_COMPACTO_V1__ = true;
+  const S = window.NODO_MP_WORKER_LIVE_V20 = window.NODO_MP_WORKER_LIVE_V20 || {
+    pagos: [],
+    workerBusy: false,
+    solicitudesBusy: false,
+    mpBusy: false,
+    rtChannel: null,
+    timersStarted: false,
+    lastWorkerAt: 0,
+    lastMpAt: 0,
+    installed: false
+  };
 
-  const $ = (id)=>document.getElementById(id);
-  const esc = (v)=> typeof escapeHtml === 'function' ? escapeHtml(v) : String(v||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
-  const pesos = (v)=> typeof money === 'function' ? money(v) : Number(v||0).toLocaleString('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0});
-  const norm = (v)=> String(v||'').trim().toUpperCase();
-
-  function totalChatUnread(){
-    try{
-      if(typeof window.updateBadgeChatLateralV8 === 'function') return Number(window.updateBadgeChatLateralV8() || 0);
-      return (window.chats || chats || []).reduce((a,c)=>a+Number(c.SIN_LEER||0),0);
-    }catch(e){return 0;}
+  function byId(id){ return document.getElementById(id); }
+  function pc(){ return String(window.pcOperativa || (typeof pcOperativa !== 'undefined' ? pcOperativa : '') || '').trim().toUpperCase(); }
+  function token(){ return (typeof window.requireSessionToken === 'function') ? window.requireSessionToken() : (window.panelSessionToken || (typeof panelSessionToken !== 'undefined' ? panelSessionToken : '')); }
+  function esc(v){ return String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[c])); }
+  function attr(v){ return esc(v).replace(/`/g,'&#96;'); }
+  function norm(v){ try{return normalizar(v)}catch(e){return String(v||'').trim().toUpperCase();} }
+  function money2(v){ try{return money(v)}catch(e){return Number(v||0).toLocaleString('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0});} }
+  function fecha2(v){ try{return formatFecha(v)}catch(e){return v ? new Date(v).toLocaleString('es-AR') : '';} }
+  function setHtml(id, html){ const el=byId(id); if(el) el.innerHTML=html; }
+  function currentOperator(){
+    try{return String((window.operador||operador||{}).usuario || (window.operador||operador||{}).nombre || 'operador');}
+    catch(e){return 'operador';}
   }
 
-  function installOfficeDock(){
-    if($('officeDock')) return;
-    const main = document.querySelector('main.main');
-    if(!main) return;
-    const dock = document.createElement('div');
-    dock.id = 'officeDock';
-    dock.innerHTML = `
-      <div class="od-left">
-        <button class="mini-btn gray" type="button" onclick="window.toggleOfficeSidebar()" title="Achicar/mostrar menú">☰</button>
-        <div style="min-width:0">
-          <div class="od-title">NODO · Oficina</div>
-          <div class="od-sub" id="officeDockSub">Vista compacta para operar con ventana chica.</div>
-        </div>
-      </div>
-      <div class="od-actions">
-        <span class="office-chip green" id="officePcChip">PC</span>
-        <button class="mini-btn blue" type="button" onclick="mostrarVista('inicio')">Cola</button>
-        <button class="mini-btn green office-chat-button" id="officeChatBtn" type="button" onclick="window.openOfficeChat()">Chat <span class="bubble" id="officeChatBubble">0</span></button>
-        <button class="mini-btn yellow" type="button" onclick="mostrarVista('ajustes')">Ajustes</button>
-        <button class="mini-btn blue" type="button" onclick="refrescarTodo(true)">Actualizar</button>
-      </div>`;
-    main.prepend(dock);
+  function scoreClass(score, estado){
+    const e=norm(estado);
+    if(e==='CONFIRMADO') return 'info';
+    if(Number(score||0)>=90) return 'good';
+    return 'warn';
+  }
+  function estadoMpBadge(estado){
+    const e=norm(estado);
+    if(e==='CONFIRMADO') return `<span class="mp-pill info">CONFIRMADO</span>`;
+    if(e==='MATCH_ALTO') return `<span class="mp-pill ok">MATCH ALTO</span>`;
+    if(e==='REVISION') return `<span class="mp-pill warn">REVISIÓN</span>`;
+    if(e==='SUGERIDO') return `<span class="mp-pill warn">SUGERIDO</span>`;
+    return `<span class="mp-pill off">${esc(estado||'-')}</span>`;
   }
 
-  function installCloseButton(){
-    if($('officeChatClose')) return;
-    const view = $('viewChat');
-    if(!view) return;
-    const btn = document.createElement('button');
-    btn.id = 'officeChatClose';
-    btn.className = 'mini-btn red';
-    btn.type = 'button';
-    btn.textContent = 'Cerrar chat';
-    btn.onclick = ()=>window.closeOfficeChat();
-    view.prepend(btn);
-  }
-
-  window.toggleOfficeSidebar = function(){
-    document.body.classList.toggle('office-sidebar-mini');
-    try{ localStorage.setItem('nodo_office_sidebar_mini', document.body.classList.contains('office-sidebar-mini') ? '1' : '0'); }catch(e){}
-  };
-
-  window.openOfficeChat = async function(){
-    const view = $('viewChat');
-    if(!view) return;
-    document.body.classList.add('office-chat-open');
-    view.classList.remove('hidden');
-    installCloseButton();
-    try{ if(typeof cargarChats === 'function') await cargarChats(true); }catch(e){console.warn(e);}
-    updateOfficeDock();
-  };
-
-  window.closeOfficeChat = function(){
-    const view = $('viewChat');
-    document.body.classList.remove('office-chat-open');
-    if(view) view.classList.add('hidden');
-    updateOfficeDock();
-  };
-
-  function updateOfficeDock(){
-    const pc = (window.pcOperativa || (typeof pcOperativa !== 'undefined' ? pcOperativa : '') || '').toString();
-    const op = window.operador || (typeof operador !== 'undefined' ? operador : null) || {};
-    const unread = totalChatUnread();
-    const chip = $('officePcChip');
-    if(chip) chip.textContent = pc || 'PC';
-    const sub = $('officeDockSub');
-    if(sub) sub.textContent = `${op.nombre || op.usuario || 'Operador'} · ${pc || 'sin PC'} · ${unread} chat/s sin leer`;
-    const btn = $('officeChatBtn');
-    const bubble = $('officeChatBubble');
-    if(btn){ btn.classList.toggle('has-unread', unread > 0); }
-    if(bubble){ bubble.textContent = unread > 99 ? '99+' : String(unread); }
-  }
-  window.updateOfficeDock = updateOfficeDock;
-
-  // KPIs del inicio: queda el saldo agente en vivo como tarjeta principal y se quita el KPI duplicado de "Fichas agente".
-  window.renderOpsKpis = function(){
-    try{
-      const pendientes=(window.solicitudes||solicitudes||[]).filter(typeof esPendiente==='function'?esPendiente:(s)=>false);
-      const jobs=(window.workerJobs||workerJobs||[]);
-      const activos=jobs.filter(j=>['PENDIENTE','PROCESANDO','REINTENTAR','ERROR','ERROR_JOB','REQUIERE_MANUAL'].includes(norm(j.estado)));
-      const errores=jobs.filter(j=>['REINTENTAR','ERROR','ERROR_JOB','REQUIERE_MANUAL'].includes(norm(j.estado)));
-      const unread=totalChatUnread();
-      const bs=(window.saldosOperativos||saldosOperativos||{})?.billeteras||[];
-      const total=bs.reduce((a,b)=>a+Number(b.saldo||0),0);
-      if(typeof setBox === 'function') setBox('opsKpis', `
-        <div class="ops-kpi"><div class="ops-kpi-title">Total billeteras</div><div class="ops-kpi-value">${pesos(total)}</div><div class="ops-kpi-sub">${bs.length} billetera/s</div></div>
-        <div class="ops-kpi"><div class="ops-kpi-title">Pendientes</div><div class="ops-kpi-value">${pendientes.length}</div><div class="ops-kpi-sub">Landing sin cerrar</div></div>
-        <div class="ops-kpi"><div class="ops-kpi-title">Worker / cola</div><div class="ops-kpi-value">${activos.length}</div><div class="ops-kpi-sub">${errores.length} error/reintento</div></div>
-        <div class="ops-kpi"><div class="ops-kpi-title">Chats</div><div class="ops-kpi-value">${unread}</div><div class="ops-kpi-sub">Sin leer</div></div>`);
-      updateOfficeDock();
-    }catch(e){ console.warn('renderOpsKpis oficina', e); }
-  };
-  try{ renderOpsKpis = window.renderOpsKpis; }catch(e){}
-
-  const oldMostrarVista = window.mostrarVista;
-  window.mostrarVista = function(vista){
-    if(vista !== 'chat') document.body.classList.remove('office-chat-open');
-    const r = typeof oldMostrarVista === 'function' ? oldMostrarVista.apply(this, arguments) : undefined;
-    setTimeout(updateOfficeDock, 80);
-    return r;
-  };
-  try{ mostrarVista = window.mostrarVista; }catch(e){}
-
-  const oldUpdateBadge = window.updateBadgeChatLateralV8;
-  if(typeof oldUpdateBadge === 'function'){
-    window.updateBadgeChatLateralV8 = function(){
-      const r = oldUpdateBadge.apply(this, arguments);
-      setTimeout(updateOfficeDock, 0);
-      return r;
+  function normalizePagoRow(r){
+    return {
+      solicitud_id: r.solicitud_id,
+      pc_codigo: r.pc_codigo,
+      usuario: r.usuario || '',
+      nombre_completo: r.nombre_completo || '',
+      telefono: r.telefono || '',
+      tipo: r.tipo || '',
+      monto: Number(r.monto || 0),
+      solicitud_estado: r.solicitud_estado || '',
+      solicitud_created_at: r.solicitud_created_at || '',
+      pago_match_estado: r.pago_match_estado || r.match_estado || '',
+      pago_match_score: Number(r.pago_match_score || r.match_score || 0),
+      pago_match_motivo: r.pago_match_motivo || r.match_motivo || '',
+      pago_match_id: r.pago_match_id,
+      movimiento_id: r.movimiento_id,
+      billetera_id: r.billetera_id,
+      billetera_nombre: r.billetera_nombre || '',
+      billetera_alias: r.billetera_alias || '',
+      fecha_movimiento: r.fecha_movimiento || r.mp_pago_detectado_at || '',
+      monto_neto: Number(r.monto_neto || r.mp_monto_detectado || 0),
+      descripcion: r.descripcion || '',
+      origen_nombre: r.origen_nombre || r.mp_titular_detectado || '',
+      origen_documento: r.origen_documento || r.mp_dni_detectado || '',
+      movimiento_usado: !!r.movimiento_usado
     };
   }
 
-  const oldRenderCentro = window.renderCentroOperativo;
-  window.renderCentroOperativo = function(){
-    const r = typeof oldRenderCentro === 'function' ? oldRenderCentro.apply(this, arguments) : undefined;
-    try{ window.renderOpsKpis(); }catch(e){}
-    updateOfficeDock();
-    return r;
-  };
-  try{ renderCentroOperativo = window.renderCentroOperativo; }catch(e){}
-
-  function initOfficeMode(){
-    document.body.classList.add('office-mode');
-    if(localStorage.getItem('nodo_office_sidebar_mini') === '1') document.body.classList.add('office-sidebar-mini');
-    installOfficeDock();
-    installCloseButton();
-    updateOfficeDock();
-    setTimeout(()=>{ try{ if(typeof renderCentroOperativo === 'function') renderCentroOperativo(); }catch(e){} }, 600);
-    setInterval(updateOfficeDock, 2500);
+  async function cargarPagosMp(silencioso=true){
+    if(!pc() || !token()) return [];
+    if(S.mpBusy) return S.pagos || [];
+    S.mpBusy = true;
+    try{
+      const {data, error} = await supabaseClient
+        .from('v_mp_pagos_detectados')
+        .select('*')
+        .eq('pc_codigo', pc())
+        .order('pago_match_at', {ascending:false, nullsFirst:false})
+        .limit(80);
+      if(error){
+        console.warn('Pagos MP no disponibles todavía:', error.message || error);
+        S.pagos = [];
+      }else{
+        S.pagos = (data || []).map(normalizePagoRow);
+      }
+      renderPagosMp();
+      renderPagosMpInicio();
+      updateMpBadge();
+      if(!silencioso) toast('Pagos MP actualizados','green');
+      return S.pagos;
+    }catch(e){
+      console.warn('Error pagos MP:', e);
+      S.pagos=[];
+      return [];
+    }finally{
+      S.mpBusy = false;
+    }
   }
 
-  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initOfficeMode);
-  else initOfficeMode();
+  function pagosPendientes(){
+    return (S.pagos || []).filter(p => ['MATCH_ALTO','REVISION','SUGERIDO'].includes(norm(p.pago_match_estado)));
+  }
+  function updateMpBadge(){
+    const n=pagosPendientes().length;
+    const b=byId('badgeMp');
+    if(b){
+      if(n>0){ b.classList.remove('hidden'); b.textContent=n; }
+      else{ b.classList.add('hidden'); b.textContent='0'; }
+    }
+  }
+
+  function pagoCard(p, compact=false){
+    const e=norm(p.pago_match_estado);
+    const cls=e==='CONFIRMADO'?'confirmado':(Number(p.pago_match_score)>=90?'match':'revision');
+    const sc=scoreClass(p.pago_match_score,p.pago_match_estado);
+    const confirmado=e==='CONFIRMADO';
+    return `<div class="mp-card ${cls}">
+      <div class="mp-card-top">
+        <div>
+          ${estadoMpBadge(p.pago_match_estado)}
+          <div class="mp-meta" style="margin-top:6px">Solicitud #${esc(p.solicitud_id)} · ${fecha2(p.solicitud_created_at)}</div>
+        </div>
+        <div class="mp-score ${sc}">${esc(p.pago_match_score||0)}</div>
+      </div>
+      <div><b>${esc(p.usuario || 'Usuario')}</b> <span class="mp-meta">${esc(p.nombre_completo||'')}</span></div>
+      <div class="mp-amount">${money2(p.monto || p.monto_neto)}</div>
+      <div class="mp-meta">
+        Detectado: <b>${money2(p.monto_neto)}</b> · ${fecha2(p.fecha_movimiento)}<br>
+        Titular MP: ${esc(p.origen_nombre || '-')}<br>
+        Billetera: ${esc(p.billetera_nombre || '-')} · Alias ${esc(p.billetera_alias || '-')}
+        ${compact?'':`<br>Motivo: ${esc(p.pago_match_motivo || '-')}`}
+      </div>
+      <div class="mp-actions">
+        <button class="mini-btn blue" onclick="verDetallePagoMp('${attr(p.solicitud_id)}')">Ver</button>
+        ${!confirmado ? `<button class="mini-btn green" onclick="confirmarPagoMp('${attr(p.pago_match_id)}')">Confirmar pago</button>
+        <button class="mini-btn red" onclick="descartarPagoMp('${attr(p.pago_match_id)}')">Descartar</button>` : `<button class="mini-btn yellow" onclick="verSolicitudInicio('${attr(p.solicitud_id)}')">Enviar / ver solicitud</button>`}
+      </div>
+    </div>`;
+  }
+
+  function renderPagosMpInicio(){
+    const box=byId('mpPagosInicio');
+    if(!box) return;
+    const rows=(S.pagos||[]).slice(0,4);
+    if(!rows.length){
+      box.innerHTML='';
+      return;
+    }
+    const pendientes=pagosPendientes().length;
+    box.innerHTML=`<div class="mp-detect-panel">
+      <div class="mp-detect-head">
+        <div><div class="mp-detect-title">💚 Pagos MP detectados</div><div class="mp-detect-sub">Coincidencias por monto, billetera, horario y referencia. No acredita solo.</div></div>
+        <div class="ops-compact-actions"><span class="mp-pill ${pendientes?'warn':'info'}">${pendientes} por confirmar</span><button class="mini-btn blue" onclick="mostrarVista('mp')">Ver todos</button></div>
+      </div>
+      <div class="mp-card-grid">${rows.map(p=>pagoCard(p,true)).join('')}</div>
+    </div>`;
+  }
+
+  function renderPagosMp(){
+    const box=byId('mpPagosBody');
+    if(!box) return;
+    const q=norm((byId('mpFiltroTexto')||{}).value||'');
+    const estado=norm((byId('mpFiltroEstado')||{}).value||'');
+    let rows=(S.pagos||[]).slice();
+    if(estado) rows=rows.filter(p=>norm(p.pago_match_estado)===estado);
+    if(q) rows=rows.filter(p=>norm(`${p.solicitud_id} ${p.usuario} ${p.nombre_completo} ${p.origen_nombre} ${p.billetera_nombre} ${p.pago_match_motivo} ${p.descripcion}`).includes(q));
+    if(!rows.length){
+      box.innerHTML=`<div class="alert-box">No hay pagos Mercado Pago detectados para esta PC.</div>`;
+      return;
+    }
+    box.innerHTML=`<div class="mp-card-grid">${rows.map(p=>pagoCard(p,false)).join('')}</div>`;
+  }
+
+  window.verDetallePagoMp=function(solicitudId){
+    const p=(S.pagos||[]).find(x=>String(x.solicitud_id)===String(solicitudId));
+    if(!p){ alert('No encontré el pago detectado.'); return; }
+    abrirModal('Pago MP detectado', `
+      <div class="verify-box ${Number(p.pago_match_score)>=90?'good':'warn'}">
+        <div class="verify-title">Mercado Pago · ${esc(p.pago_match_estado)} · score ${esc(p.pago_match_score)}</div>
+        <div class="verify-grid">
+          ${verifyRow('Solicitud', '#'+p.solicitud_id)}
+          ${verifyRow('Usuario', p.usuario || '-', '', true)}
+          ${verifyRow('Monto solicitado', money2(p.monto), 'big')}
+          ${verifyRow('Monto detectado', money2(p.monto_neto), 'big')}
+          ${verifyRow('Titular MP', p.origen_nombre || '-', '', true)}
+          ${verifyRow('DNI / doc.', p.origen_documento || '-')}
+          ${verifyRow('Billetera', p.billetera_nombre || '-')}
+          ${verifyRow('Fecha movimiento', fecha2(p.fecha_movimiento))}
+        </div>
+      </div>
+      <div class="verify-box">
+        <div class="verify-title">Motivo del match</div>
+        <div class="verify-value">${esc(p.pago_match_motivo || '-')}</div>
+      </div>
+    `, async()=>cerrarModal(), 'Cerrar');
+  };
+
+  window.confirmarPagoMp=async function(matchId){
+    if(!matchId){ alert('No hay match_id.'); return; }
+    if(!confirm('¿Confirmar este pago de Mercado Pago? La solicitud queda lista para que el operador la envíe al worker.')) return;
+    const {data,error}=await supabaseClient.rpc('mp_confirmar_match',{p_match_id:Number(matchId),p_confirmado_por:currentOperator()});
+    if(error){ alert('Error confirmando pago MP: '+error.message); return; }
+    const r=Array.isArray(data)?data[0]:data;
+    if(r && r.ok===false){ alert(r.mensaje || 'No se pudo confirmar.'); return; }
+    toast('Pago MP confirmado','green');
+    await cargarPagosMp(true);
+    await nodoReloadSolicitudesDirect('mp_confirmado');
+  };
+
+  window.descartarPagoMp=async function(matchId){
+    if(!matchId){ alert('No hay match_id.'); return; }
+    const motivo=prompt('Motivo del descarte:', 'No corresponde a esta solicitud');
+    if(motivo===null) return;
+    const {data,error}=await supabaseClient.rpc('mp_descartar_match',{p_match_id:Number(matchId),p_rechazado_por:currentOperator(),p_motivo:motivo||'Sin motivo'});
+    if(error){ alert('Error descartando MP: '+error.message); return; }
+    const r=Array.isArray(data)?data[0]:data;
+    if(r && r.ok===false){ alert(r.mensaje || 'No se pudo descartar.'); return; }
+    toast('Match MP descartado','green');
+    await cargarPagosMp(true);
+    await nodoReloadSolicitudesDirect('mp_descartado');
+  };
+
+  async function nodoReloadSolicitudesDirect(trigger=''){
+    if(!pc() || !token() || S.solicitudesBusy) return;
+    S.solicitudesBusy=true;
+    try{
+      if(typeof cargarSolicitudesSupabase==='function'){
+        const r=await cargarSolicitudesSupabase();
+        if(r && r.ok){
+          window.solicitudes = solicitudes = r.solicitudes || [];
+          try{ renderSolicitudes(); }catch(e){}
+          try{ renderInicio(); }catch(e){}
+          try{ renderCentroOperativo(); }catch(e){}
+        }
+      }
+    }finally{ S.solicitudesBusy=false; }
+  }
+  window.nodoReloadSolicitudesDirect=nodoReloadSolicitudesDirect;
+
+  async function nodoReloadWorkerDirect(trigger=''){
+    if(!pc() || !token() || S.workerBusy) return;
+    S.workerBusy=true;
+    try{
+      const estado = (byId('workerFiltroEstado')||{}).value || '';
+      const tipo = (byId('workerFiltroTipo')||{}).value || '';
+      const {data,error}=await supabaseClient.rpc('admin_listar_worker_jobs',{p_pc_codigo:pc(),p_estado:estado,p_tipo:tipo,p_limit:120});
+      if(error){ console.warn('Worker live no pudo actualizar:', error.message || error); return; }
+      window.workerJobs = workerJobs = data || [];
+      try{ renderWorkerJobs(); }catch(e){}
+      try{ renderCentroOperativo(); }catch(e){}
+      setWorkerLiveStatus('Worker live actualizado');
+    }finally{
+      S.workerBusy=false;
+      S.lastWorkerAt=Date.now();
+    }
+  }
+  window.nodoReloadWorkerDirect=nodoReloadWorkerDirect;
+
+  function setWorkerLiveStatus(txt){
+    const el=byId('workerLiveStatus');
+    if(el) el.innerHTML=`<span class="worker-live-dot"></span>${esc(txt)} <span class="worker-live-small">${new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span>`;
+  }
+
+  function installDom(){
+    if(S.installed) return;
+    const navSol=byId('navSolicitudes');
+    if(navSol && !byId('navMp')){
+      navSol.insertAdjacentHTML('afterend', `<button id="navMp" class="nav-btn" onclick="mostrarVista('mp')">💚 Pagos MP <span id="badgeMp" class="badge-alert hidden">0</span></button>`);
+    }
+    const main=document.querySelector('main.main');
+    if(main && !byId('viewMp')){
+      const sec=document.createElement('section');
+      sec.id='viewMp';
+      sec.className='hidden';
+      sec.innerHTML=`<div class="card">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+          <div><h2 class="card-title" style="margin-bottom:3px">💚 Pagos Mercado Pago detectados</h2><div class="small">Confirmación humana. Detecta y sugiere, pero no acredita fichas solo.</div></div>
+          <button class="mini-btn blue" onclick="cargarPagosMp(false)">🔄 Actualizar MP</button>
+        </div>
+        <div class="filters">
+          <select id="mpFiltroEstado" onchange="renderPagosMp()"><option value="">Todos</option><option value="MATCH_ALTO">Match alto</option><option value="REVISION">Revisión</option><option value="SUGERIDO">Sugerido</option><option value="CONFIRMADO">Confirmado</option></select>
+          <input id="mpFiltroTexto" placeholder="Buscar usuario, titular, billetera, motivo..." oninput="renderPagosMp()">
+        </div>
+        <div id="mpPagosBody"></div>
+      </div>`;
+      const ajustes=byId('viewAjustes');
+      if(ajustes) main.insertBefore(sec, ajustes); else main.appendChild(sec);
+    }
+    const wallet=byId('opsWalletStrip');
+    if(wallet && !byId('mpPagosInicio')) wallet.insertAdjacentHTML('afterend','<div id="mpPagosInicio"></div>');
+    const workerHead=byId('viewWorker')?.querySelector('h1');
+    if(workerHead && !byId('workerLiveStatus')) workerHead.insertAdjacentHTML('afterend','<div id="workerLiveStatus" class="small"><span class="worker-live-dot"></span>Worker live activo</div>');
+    S.installed=true;
+  }
+
+  const oldMostrar=window.mostrarVista;
+  window.mostrarVista=function(vista){
+    const v=String(vista||'').toLowerCase();
+    installDom();
+    if(v==='mp'){
+      ['Inicio','Solicitudes','Billeteras','Chat','Worker','Ajustes','Mp'].forEach(x=>{
+        byId('view'+x)?.classList.add('hidden');
+        byId('nav'+x)?.classList.remove('active');
+      });
+      byId('viewMp')?.classList.remove('hidden');
+      byId('navMp')?.classList.add('active');
+      cargarPagosMp(true);
+      try{ cerrarMenuMobile(); }catch(e){}
+      return;
+    }
+    if(typeof oldMostrar==='function') oldMostrar(vista);
+    byId('viewMp')?.classList.add('hidden');
+    byId('navMp')?.classList.remove('active');
+  };
+
+  const oldRenderCentro=window.renderCentroOperativo;
+  window.renderCentroOperativo=function(){
+    if(typeof oldRenderCentro==='function') oldRenderCentro();
+    installDom();
+    renderPagosMpInicio();
+    updateMpBadge();
+  };
+
+  const oldRefrescar=window.refrescarTodo;
+  window.refrescarTodo=async function(showToast=true){
+    if(typeof oldRefrescar==='function') await oldRefrescar(showToast);
+    await cargarPagosMp(true);
+    await nodoReloadWorkerDirect('refrescarTodo');
+  };
+
+  window.cargarPagosMp=cargarPagosMp;
+  window.renderPagosMp=renderPagosMp;
+
+  function installRealtime(){
+    if(!window.supabaseClient || !pc()) return;
+    try{ if(S.rtChannel) supabaseClient.removeChannel(S.rtChannel); }catch(e){}
+    const ch=supabaseClient.channel('nodo_mp_worker_live_'+pc()+'_'+Date.now());
+    let workerTimer=null, solTimer=null, mpTimer=null;
+    const workerNow=()=>{ clearTimeout(workerTimer); workerTimer=setTimeout(()=>nodoReloadWorkerDirect('realtime'),350); };
+    const solNow=()=>{ clearTimeout(solTimer); solTimer=setTimeout(()=>nodoReloadSolicitudesDirect('realtime'),450); };
+    const mpNow=()=>{ clearTimeout(mpTimer); mpTimer=setTimeout(()=>cargarPagosMp(true),500); };
+    ch.on('postgres_changes',{event:'*',schema:'public',table:'worker_jobs',filter:'pc_codigo=eq.'+pc()},()=>{ workerNow(); solNow(); });
+    ch.on('postgres_changes',{event:'*',schema:'public',table:'solicitudes',filter:'pc_codigo=eq.'+pc()},()=>{ solNow(); mpNow(); });
+    ['mp_matches','mp_movimientos'].forEach(tbl=>{
+      try{ ch.on('postgres_changes',{event:'*',schema:'public',table:tbl},()=>{ mpNow(); solNow(); }); }catch(e){}
+    });
+    ch.subscribe(status=>{
+      if(status==='SUBSCRIBED') setWorkerLiveStatus('Realtime worker conectado');
+      else setWorkerLiveStatus('Realtime '+status);
+    });
+    S.rtChannel=ch;
+  }
+
+  function startTimers(){
+    if(S.timersStarted) return;
+    S.timersStarted=true;
+    setInterval(()=>{ if(!document.hidden) nodoReloadWorkerDirect('poll'); },1500);
+    setInterval(()=>{ if(!document.hidden) cargarPagosMp(true); },5000);
+    setInterval(()=>{ if(!document.hidden) nodoReloadSolicitudesDirect('poll'); },4500);
+  }
+
+  function boot(){
+    installDom();
+    startTimers();
+    setTimeout(()=>{ installRealtime(); cargarPagosMp(true); nodoReloadWorkerDirect('boot'); },1200);
+  }
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,600));
+  window.addEventListener('load',()=>setTimeout(boot,1200));
 })();
 </script>
 
