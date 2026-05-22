@@ -6112,5 +6112,368 @@ async function cerrarSesion(){
 })();
 </script>
 
+
+
+<!-- =========================================================
+     NODO OPERATIVO P4 · UX SAFE PATCH
+     - Scroll estable sin saltos al refrescar
+     - Billeteras robustas P1/P2/P3/P4/P5 con campos mayúsc/minúsc
+     - Scroll independiente Inicio/Solicitudes/Worker
+     - Zoom real para imágenes/comprobantes del chat
+     - Acción rápida intuitiva: 0/vacío valida, + carga, - retira
+     - No modifica worker, Agentes, SQL ni RPC de ejecución
+========================================================= -->
+<style>
+/* Scroll de panel: evita que una actualización mande toda la pantalla arriba */
+body.nodo-ux-safe{overflow:hidden}
+body.nodo-ux-safe .layout{height:100vh;overflow:hidden}
+body.nodo-ux-safe .main{height:100vh;overflow:hidden;padding:12px 14px}
+body.nodo-ux-safe .main>section{height:calc(100vh - 24px);overflow-y:auto;overflow-x:hidden;padding-right:4px;scrollbar-gutter:stable}
+body.nodo-ux-safe .table-wrap{max-height:calc(100vh - 210px);overflow:auto;scrollbar-gutter:stable}
+body.nodo-ux-safe #viewInicio .ops-table-wrap{max-height:calc(100vh - 330px);overflow:auto;scrollbar-gutter:stable}
+body.nodo-ux-safe #viewWorker .table-wrap{max-height:calc(100vh - 300px)}
+body.nodo-ux-safe #viewSolicitudes .table-wrap{max-height:calc(100vh - 190px)}
+body.nodo-ux-safe .ops-grid{align-items:start}
+body.nodo-ux-safe .ops-panel{margin-bottom:10px}
+body.nodo-ux-safe .ops-panel-title{font-size:16px;margin-bottom:7px}
+body.nodo-ux-safe .ops-manual-grid{gap:6px}
+body.nodo-ux-safe input,body.nodo-ux-safe select,body.nodo-ux-safe textarea{margin-top:4px;margin-bottom:7px;padding:9px 10px}
+body.nodo-ux-safe .card{padding:14px;margin-bottom:12px}
+body.nodo-ux-safe .sidebar{padding:12px;width:auto}
+body.nodo-ux-safe .layout{grid-template-columns:235px 1fr}
+body.nodo-ux-safe .logo{width:132px;margin-bottom:10px}
+body.nodo-ux-safe .nav-btn{padding:10px 11px;margin-bottom:6px}
+body.nodo-ux-safe .wallet-grid{grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}
+body.nodo-ux-safe .wallet-card{padding:12px;border-radius:14px}
+body.nodo-ux-safe .ops-wallet-strip{grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}
+body.nodo-ux-safe .ops-wallet{padding:10px;border-radius:14px}
+body.nodo-ux-safe .ops-wallet-saldo{font-size:18px}
+body.nodo-ux-safe .ops-main-table td,body.nodo-ux-safe .ops-main-table th{font-size:11px;padding:7px}
+
+/* Modo acción intuitiva */
+.nodo-auto-action-note{border:1px solid rgba(61,90,254,.35);background:rgba(61,90,254,.10);color:#dbe4ff;border-radius:12px;padding:9px 10px;font-size:12px;line-height:1.35;margin:5px 0 8px}
+.nodo-auto-action-preview{border-radius:999px;padding:5px 8px;font-weight:900;font-size:11px;display:inline-block;margin-top:5px}
+.nodo-auto-action-preview.valida{background:#16235f;color:#cbd5ff}
+.nodo-auto-action-preview.carga{background:#11371f;color:#b9f7cb}
+.nodo-auto-action-preview.retiro{background:#3a1515;color:#ffd0d0}
+.nodo-hidden-legacy-type{display:none!important}
+
+/* Zoom comprobantes */
+.nodo-img-zoomable{cursor:zoom-in;transition:.12s;box-shadow:0 0 0 1px rgba(255,255,255,.08)}
+.nodo-img-zoomable:hover{filter:brightness(1.08);box-shadow:0 0 0 2px rgba(61,90,254,.65)}
+#nodoImageViewer{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:999999;display:none;align-items:center;justify-content:center;overflow:hidden;user-select:none}
+#nodoImageViewer.show{display:flex}
+#nodoImageViewerImg{max-width:none;max-height:none;transform-origin:center center;cursor:grab;border-radius:10px;box-shadow:0 16px 70px rgba(0,0,0,.7)}
+#nodoImageViewerImg.dragging{cursor:grabbing}
+.nodo-viewer-toolbar{position:fixed;top:14px;left:50%;transform:translateX(-50%);display:flex;gap:8px;align-items:center;background:rgba(17,24,39,.92);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:8px;z-index:1000000;box-shadow:0 12px 35px rgba(0,0,0,.45)}
+.nodo-viewer-toolbar button{width:auto;margin:0;border:0;border-radius:10px;padding:9px 11px;background:#2d3443;color:#fff;font-weight:900;cursor:pointer}
+.nodo-viewer-toolbar button:hover{background:#3d5afe}
+.nodo-viewer-toolbar .danger{background:#f04438}
+.nodo-viewer-help{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);color:#d0d5dd;background:rgba(17,24,39,.85);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:8px 12px;font-size:12px;z-index:1000000}
+@media(max-width:900px){body.nodo-ux-safe .main{height:auto;overflow:auto}body.nodo-ux-safe .main>section{height:auto;min-height:calc(100vh - 60px)}body.nodo-ux-safe .layout{display:block}.nodo-viewer-toolbar{left:8px;right:8px;transform:none;justify-content:center;flex-wrap:wrap}}
+</style>
+
+<script>
+(function(){
+  if(window.__NODO_P4_UX_SAFE_PATCH__) return;
+  window.__NODO_P4_UX_SAFE_PATCH__ = true;
+
+  const $ = id => document.getElementById(id);
+  const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[c]));
+  const attr = v => esc(v).replace(/`/g,'&#096;');
+  const norm = v => String(v ?? '').trim().toUpperCase();
+  const num = v => Number(String(v ?? '').replace(/[^0-9.-]/g,'') || 0);
+  const moneySafe = v => (typeof money === 'function' ? money(v) : Number(v||0).toLocaleString('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}));
+  const toastSafe = (m,t='blue') => { try{ toast(m,t); }catch(e){ console.log(m); } };
+
+  document.body.classList.add('nodo-ux-safe');
+
+  /* ---------- Scroll estable ---------- */
+  function collectScrollState(root){
+    if(!root) return [];
+    const nodes = [root].concat(Array.from(root.querySelectorAll('.table-wrap,.ops-table-wrap,.chat-body,.chat-list,#opsColaUnificada,#tablaSolicitudesCompleta,#tablaWorkerOperativo')));
+    return nodes.map((el,i)=>({i, cls:el.className||'', id:el.id||'', top:el.scrollTop||0, left:el.scrollLeft||0}));
+  }
+  function restoreScrollState(root,state){
+    if(!root || !state) return;
+    const nodes = [root].concat(Array.from(root.querySelectorAll('.table-wrap,.ops-table-wrap,.chat-body,.chat-list,#opsColaUnificada,#tablaSolicitudesCompleta,#tablaWorkerOperativo')));
+    state.forEach(s=>{
+      let el = s.id ? root.querySelector('#'+CSS.escape(s.id)) : null;
+      if(!el) el = nodes[s.i];
+      if(el){ el.scrollTop = s.top || 0; el.scrollLeft = s.left || 0; }
+    });
+  }
+  try{
+    const oldSetBox = window.setBox || setBox;
+    window.setBox = setBox = function(id, html){
+      const el = $(id);
+      const state = collectScrollState(el);
+      oldSetBox(id, html);
+      requestAnimationFrame(()=>restoreScrollState($(id), state));
+    };
+  }catch(e){ console.warn('No pude reforzar setBox scroll:', e); }
+
+  function keepScrollAround(fn){
+    return function(){
+      const main = document.querySelector('.main');
+      const activeSection = document.querySelector('.main>section:not(.hidden)');
+      const sMain = collectScrollState(main);
+      const sSec = collectScrollState(activeSection);
+      const res = fn.apply(this, arguments);
+      requestAnimationFrame(()=>{ restoreScrollState(main,sMain); restoreScrollState(activeSection,sSec); });
+      return res;
+    };
+  }
+  ['renderSolicitudes','renderWorkerJobs','renderCentroOperativo','renderColaUnificada','renderBilleteras'].forEach(name=>{
+    try{ if(typeof window[name] === 'function') window[name] = keepScrollAround(window[name]); }catch(e){}
+  });
+
+  /* ---------- Billeteras robustas ---------- */
+  function pick(o, names, def=''){
+    for(const n of names){ if(o && o[n] !== undefined && o[n] !== null && String(o[n]).trim() !== '') return o[n]; }
+    return def;
+  }
+  function normalizarPc(v){
+    let x = norm(v).replace(/\s+/g,'').replace(/-/g,'').replace(/_/g,'');
+    if(/^PC\d+$/.test(x)) return 'P'+x.replace('PC','');
+    return x;
+  }
+  function walletIsActive(w){
+    const raw = pick(w,['ACTIVA','activa','activo','ACTIVO','estado','ESTADO'], '');
+    if(raw === true) return true;
+    const x = norm(raw);
+    return ['SI','SÍ','TRUE','1','ACTIVA','ACTIVO','DISPONIBLE','OK'].includes(x);
+  }
+  function walletIsManual(w){
+    const raw = pick(w,['SELECCIONADA_MANUAL','seleccionada_manual','manual','en_landing'], '');
+    if(raw === true) return true;
+    return ['SI','SÍ','TRUE','1','MANUAL','EN LANDING'].includes(norm(raw));
+  }
+  function normWallet(w){
+    const id = String(pick(w,['ID_BILLETERA','id','billetera_id','ID'], '') || '');
+    return {
+      _raw:w,
+      id,
+      ID_BILLETERA:id,
+      nombre: String(pick(w,['NOMBRE_VISIBLE','nombre_visible','BILLETERA_NOMBRE','nombre','NOMBRE','titular'], 'Billetera')),
+      banco: String(pick(w,['TIPO','banco','BANCO','tipo'], '')),
+      titular: String(pick(w,['TITULAR','titular'], '')),
+      alias: String(pick(w,['ALIAS','alias'], '')),
+      cbu: String(pick(w,['CBU','cbu','CVU','cvu'], '')),
+      pc: normalizarPc(pick(w,['PC','pc_codigo','PC_CODIGO','codigo'], pcOperativa || '')),
+      activa: walletIsActive(w),
+      manual: walletIsManual(w),
+      saldo: Number(pick(w,['saldo','SALDO','monto','MONTO'], 0) || 0)
+    };
+  }
+  function listaWalletsBase(){
+    const a = Array.isArray(window.billeteras) ? window.billeteras : (typeof billeteras !== 'undefined' ? billeteras : []);
+    const b = Array.isArray(window.billeterasTodas) ? window.billeterasTodas : (typeof billeterasTodas !== 'undefined' ? billeterasTodas : []);
+    const c = (window.saldosOperativos && Array.isArray(window.saldosOperativos.billeteras)) ? window.saldosOperativos.billeteras : ((typeof saldosOperativos !== 'undefined' && saldosOperativos && Array.isArray(saldosOperativos.billeteras)) ? saldosOperativos.billeteras : []);
+    const pc = normalizarPc(window.pcOperativa || (typeof pcOperativa !== 'undefined' ? pcOperativa : ''));
+    const all = (a.length ? a : b.length ? b : c).map(normWallet).filter(w => !pc || !w.pc || w.pc === pc);
+    const seen = new Set();
+    return all.filter(w => { const k = w.id || (w.nombre+'|'+w.alias); if(seen.has(k)) return false; seen.add(k); return true; });
+  }
+  window.nodoGetWalletsRobustas = listaWalletsBase;
+  window.nodoNormWallet = normWallet;
+
+  window.renderBilleteras = renderBilleteras = function(){
+    const list = listaWalletsBase();
+    if(!list.length){
+      setBox('walletsGrid', `<div class="alert-box">No hay billeteras visibles para esta PC. Si existen en admin, tocá Actualizar o revisá que tengan pc_codigo ${esc(pcOperativa||'')}.</div>`);
+      return;
+    }
+    const html = list.map(b=>`<div class="wallet-card ${b.activa?'ok':'paused'} ${b.manual?'selected':''}">
+      <div class="wallet-name">💳 ${esc(b.nombre || b.id || 'Billetera')}</div>
+      <div class="wallet-type">${esc(b.banco || '')} · ${esc(b.pc || pcOperativa || '')}</div>
+      <div class="small" style="margin-top:8px;line-height:1.45">
+        Titular: <b>${esc(b.titular || '-')}</b><br>
+        Alias: <b>${esc(b.alias || '-')}</b><br>
+        CBU/CVU: <b>${esc(b.cbu || '-')}</b>
+      </div>
+      <div style="margin-top:10px">
+        ${b.activa?'<span class="badge badge-ok">ACTIVA</span>':'<span class="badge badge-danger">PAUSADA</span>'}
+        ${b.manual?'<span class="badge badge-blue">EN LANDING</span>':''}
+      </div>
+      <div class="wallet-actions">
+        <button class="mini-btn blue" onclick="seleccionarBilletera('${attr(b.id)}')">Poner en landing</button>
+        <button class="mini-btn green" onclick="cambiarEstadoBilletera('${attr(b.id)}','SI')">Activar</button>
+        <button class="mini-btn red" onclick="cambiarEstadoBilletera('${attr(b.id)}','NO')">Pausar</button>
+        <button class="mini-btn gray" onclick="copiarTextoOperativo('${attr(b.alias)}','Alias')">Copiar alias</button>
+      </div>
+    </div>`).join('');
+    setBox('walletsGrid', html);
+  };
+
+  window.getWalletById = getWalletById = function(id){
+    const sid = String(id || '');
+    const found = listaWalletsBase().find(w => String(w.id) === sid);
+    return found ? Object.assign({}, found._raw || {}, {ID_BILLETERA:found.id, id:found.id, NOMBRE_VISIBLE:found.nombre, nombre_visible:found.nombre, BILLETERA_NOMBRE:found.nombre, TIPO:found.banco, banco:found.banco, TITULAR:found.titular, titular:found.titular, alias:found.alias, ALIAS:found.alias}) : null;
+  };
+
+  function renderWalletOptions(selectId, allowBlankText){
+    const sel = $(selectId); if(!sel) return;
+    const previous = sel.value;
+    const list = listaWalletsBase().filter(w => w.activa || w.saldo !== 0);
+    sel.innerHTML = `<option value="">${esc(allowBlankText || 'Seleccionar billetera')}</option>` + list.map(w=>`<option value="${attr(w.id)}">${esc(w.nombre)} · ${esc(w.banco)}${w.saldo?(' · '+moneySafe(w.saldo)):''}</option>`).join('');
+    if(previous && Array.from(sel.options).some(o=>String(o.value)===String(previous))) sel.value = previous;
+  }
+  window.renderWalletSelectWorkerManual = renderWalletSelectWorkerManual = function(){ renderWalletOptions('manualWorkerBilletera','No aplica / seleccionar billetera'); };
+  window.renderWalletSelectWorkerInicio = renderWalletSelectWorkerInicio = function(){ renderWalletOptions('manualWorkerBilleteraInicio','No aplica / seleccionar billetera'); };
+  const oldRenderSelectsAjustes = window.renderSelectsAjustes || (typeof renderSelectsAjustes==='function' ? renderSelectsAjustes : null);
+  window.renderSelectsAjustes = renderSelectsAjustes = function(){
+    try{ if(oldRenderSelectsAjustes) oldRenderSelectsAjustes(); }catch(e){}
+    ['ajusteBilleteraId','transferBilleteraOrigen','transferBilleteraDestino'].forEach(id=>renderWalletOptions(id,'Seleccionar billetera'));
+  };
+  window.renderOpsWallets = renderOpsWallets = function(){
+    const list = ((window.saldosOperativos && Array.isArray(window.saldosOperativos.billeteras) && window.saldosOperativos.billeteras.length) ? window.saldosOperativos.billeteras.map(normWallet) : listaWalletsBase());
+    if(!list.length){ setBox('opsWalletStrip', `<div class="ops-wallet"><div class="ops-wallet-name">Billeteras</div><div class="ops-wallet-meta">Sin billeteras visibles para esta PC.</div></div>`); return; }
+    setBox('opsWalletStrip', list.map(b=>`<div class="ops-wallet"><div class="ops-wallet-name">${esc(b.nombre||'Billetera')}</div><div class="ops-wallet-saldo">${moneySafe(b.saldo||0)}</div><div class="ops-wallet-meta">${esc(b.banco||'')} · ${esc(b.titular||'')}<br>Alias: ${esc(b.alias||'-')}</div><div class="ops-wallet-actions"><button class="mini-btn gray" onclick="copiarTextoOperativo('${attr(b.alias||'')}','Alias')">Alias</button><button class="mini-btn gray" onclick="copiarTextoOperativo('${attr(b.cbu||'')}','CBU/CVU')">CBU</button><button class="mini-btn yellow" onclick="abrirAjusteBilletera('${attr(b.id)}')">Ajustar</button></div></div>`).join(''));
+  };
+
+  /* ---------- Acción rápida intuitiva ---------- */
+  function inferAction(rawMonto){
+    const raw = String(rawMonto ?? '').trim();
+    if(raw === '') return {tipo:'VALIDAR_USUARIO', monto:0, cls:'valida', label:'Validar usuario'};
+    const n = Number(raw.replace(',','.'));
+    if(!Number.isFinite(n) || n === 0) return {tipo:'VALIDAR_USUARIO', monto:0, cls:'valida', label:'Validar usuario'};
+    if(n > 0) return {tipo:'CARGAR_FICHAS', monto:Math.abs(n), cls:'carga', label:'Cargar fichas'};
+    return {tipo:'PROCESAR_RETIRO', monto:Math.abs(n), cls:'retiro', label:'Retirar fichas'};
+  }
+  function updatePreview(montoId, previewId, walletId){
+    const r = inferAction($(montoId)?.value || '');
+    const p = $(previewId);
+    if(p) p.innerHTML = `<span class="nodo-auto-action-preview ${r.cls}">${esc(r.label)}${r.monto?(' · '+moneySafe(r.monto)):''}</span>`;
+    const wallet = $(walletId);
+    if(wallet){ wallet.disabled = r.tipo === 'VALIDAR_USUARIO'; if(r.tipo === 'VALIDAR_USUARIO') wallet.value = ''; }
+    return r;
+  }
+  function hideLegacyType(selectId){
+    const sel=$(selectId); if(!sel) return;
+    const box = sel.closest('div') || sel.parentElement;
+    if(box) box.classList.add('nodo-hidden-legacy-type');
+  }
+  function installIntuitiveUI(){
+    hideLegacyType('manualWorkerTipoInicio');
+    hideLegacyType('manualWorkerTipo');
+    const configs = [
+      {m:'manualWorkerMontoInicio', p:'nodoPreviewInicio', w:'manualWorkerBilleteraInicio', before:'manualWorkerBilleteraInicio'},
+      {m:'manualWorkerMonto', p:'nodoPreviewWorker', w:'manualWorkerBilletera', before:'manualWorkerBilletera'}
+    ];
+    configs.forEach(c=>{
+      const m=$(c.m); if(!m) return;
+      m.placeholder = '0/vacío valida · positivo carga · negativo retira';
+      if(!$(c.p)){
+        const note=document.createElement('div'); note.className='nodo-auto-action-note'; note.innerHTML='Modo automático: <b>monto vacío/0 valida usuario</b>, <b>monto positivo carga</b>, <b>monto negativo retira</b>. <span id="'+c.p+'"></span>';
+        const target=$(c.before)?.closest('div') || m.closest('div');
+        if(target && target.parentElement) target.parentElement.insertBefore(note, target);
+      }
+      m.addEventListener('input',()=>updatePreview(c.m,c.p,c.w));
+      updatePreview(c.m,c.p,c.w);
+    });
+  }
+
+  async function crearJobIntuitivo(cfg){
+    const usuario = String($(cfg.usuario)?.value || '').trim();
+    const obs = String($(cfg.obs)?.value || '').trim();
+    const billeteraId = String($(cfg.billetera)?.value || '').trim();
+    const inf = updatePreview(cfg.monto, cfg.preview, cfg.billetera);
+    const out = cfg.out;
+    const billetera = billeteraId ? getWalletById(billeteraId) : null;
+
+    if(!usuario){ setBox(out, `<div class="err-box">Ingresá un usuario.</div>`); return; }
+    if(inf.tipo !== 'VALIDAR_USUARIO' && !billeteraId){ setBox(out, `<div class="err-box">Seleccioná la billetera impactada.</div>`); return; }
+
+    if($('manualWorkerTipo')) $('manualWorkerTipo').value = inf.tipo;
+    if($('manualWorkerMonto')) $('manualWorkerMonto').value = String(inf.monto || 0);
+    if($('manualWorkerBilletera')) $('manualWorkerBilletera').value = billeteraId;
+
+    setBox(out, `<div class="alert-box">Enviando ${esc(inf.label.toLowerCase())} al worker...</div>`);
+    const payload = {
+      p_pc_codigo: pcOperativa,
+      p_usuario: usuario,
+      p_tipo_accion: inf.tipo,
+      p_monto: inf.monto,
+      p_origen: 'PANEL_OPERATIVO',
+      p_billetera_id: billeteraId ? Number(billeteraId) : null,
+      p_observacion: [
+        obs || '',
+        `Modo automático: ${inf.label}`,
+        billetera ? `Billetera: ${billetera.NOMBRE_VISIBLE || billetera.nombre_visible || billetera.BILLETERA_NOMBRE || ''} (${billetera.TIPO || billetera.banco || ''})` : '',
+        billeteraId ? `billetera_id=${billeteraId}` : ''
+      ].filter(Boolean).join(' | ')
+    };
+
+    const {data,error} = await supabaseClient.rpc('operativo_crear_worker_job_manual_v2', payload);
+    if(error){ setBox(out, `<div class="err-box">Error creando job: ${esc(error.message || '')}</div>`); return; }
+    const r = Array.isArray(data) ? data[0] : data;
+    if(r && r.ok === false){ setBox(out, `<div class="err-box">${esc(r.error || r.mensaje || 'No se pudo crear el job.')}</div>`); return; }
+    setBox(out, `<div class="ok-box">${esc(inf.label)} enviada al worker. Job: <b>${esc(r?.job_id || r?.id || '-')}</b></div>`);
+
+    // Agiliza siguiente movimiento: limpia usuario/monto/obs, conserva billetera.
+    if($(cfg.usuario)) $(cfg.usuario).value = '';
+    if($(cfg.monto)) $(cfg.monto).value = '';
+    if($(cfg.obs)) $(cfg.obs).value = '';
+    updatePreview(cfg.monto, cfg.preview, cfg.billetera);
+    try{ await refrescarTodo(false); }catch(e){}
+  }
+  window.crearWorkerJobManualInicio = crearWorkerJobManualInicio = async function(){
+    await crearJobIntuitivo({usuario:'manualWorkerUsuarioInicio', monto:'manualWorkerMontoInicio', billetera:'manualWorkerBilleteraInicio', obs:'manualWorkerObsInicio', out:'manualWorkerResultadoInicio', preview:'nodoPreviewInicio'});
+  };
+  window.crearWorkerJobManualDesdePanel = crearWorkerJobManualDesdePanel = async function(){
+    await crearJobIntuitivo({usuario:'manualWorkerUsuario', monto:'manualWorkerMonto', billetera:'manualWorkerBilletera', obs:'manualWorkerObs', out:'manualWorkerResultado', preview:'nodoPreviewWorker'});
+  };
+  window.ajustarMontoWorkerManualInicio = ajustarMontoWorkerManualInicio = function(){ updatePreview('manualWorkerMontoInicio','nodoPreviewInicio','manualWorkerBilleteraInicio'); renderWalletSelectWorkerInicio(); };
+  window.ajustarMontoWorkerManual = ajustarMontoWorkerManual = function(){ updatePreview('manualWorkerMonto','nodoPreviewWorker','manualWorkerBilletera'); renderWalletSelectWorkerManual(); };
+
+  /* ---------- Zoom real de imágenes/comprobantes ---------- */
+  let viewerState = {scale:1, x:0, y:0, rot:0, dragging:false, sx:0, sy:0, ox:0, oy:0, src:''};
+  function ensureViewer(){
+    if($('nodoImageViewer')) return;
+    const div=document.createElement('div');
+    div.id='nodoImageViewer';
+    div.innerHTML=`<div class="nodo-viewer-toolbar">
+      <button type="button" data-act="minus">−</button>
+      <button type="button" data-act="plus">+</button>
+      <button type="button" data-act="fit">Ajustar</button>
+      <button type="button" data-act="rot">Rotar</button>
+      <button type="button" data-act="open">Abrir</button>
+      <button type="button" class="danger" data-act="close">Cerrar</button>
+    </div><img id="nodoImageViewerImg" alt="Comprobante"><div class="nodo-viewer-help">Rueda = zoom · Arrastrá para mover · Esc para cerrar</div>`;
+    document.body.appendChild(div);
+    div.addEventListener('click',e=>{ if(e.target.id==='nodoImageViewer') closeViewer(); });
+    div.querySelector('.nodo-viewer-toolbar').addEventListener('click',e=>{
+      const a=e.target?.dataset?.act; if(!a) return;
+      if(a==='close') closeViewer();
+      if(a==='plus') { viewerState.scale=Math.min(8,viewerState.scale+.25); applyViewer(); }
+      if(a==='minus') { viewerState.scale=Math.max(.2,viewerState.scale-.25); applyViewer(); }
+      if(a==='fit') { viewerState.scale=1; viewerState.x=0; viewerState.y=0; viewerState.rot=0; applyViewer(); }
+      if(a==='rot') { viewerState.rot=(viewerState.rot+90)%360; applyViewer(); }
+      if(a==='open' && viewerState.src) window.open(viewerState.src,'_blank');
+    });
+    const img=$('nodoImageViewerImg');
+    div.addEventListener('wheel',e=>{ e.preventDefault(); const delta=e.deltaY<0?.18:-.18; viewerState.scale=Math.max(.2,Math.min(8,viewerState.scale+delta)); applyViewer(); },{passive:false});
+    img.addEventListener('mousedown',e=>{ viewerState.dragging=true; viewerState.sx=e.clientX; viewerState.sy=e.clientY; viewerState.ox=viewerState.x; viewerState.oy=viewerState.y; img.classList.add('dragging'); });
+    window.addEventListener('mousemove',e=>{ if(!viewerState.dragging) return; viewerState.x=viewerState.ox+(e.clientX-viewerState.sx); viewerState.y=viewerState.oy+(e.clientY-viewerState.sy); applyViewer(); });
+    window.addEventListener('mouseup',()=>{ viewerState.dragging=false; img.classList.remove('dragging'); });
+    window.addEventListener('keydown',e=>{ if(e.key==='Escape') closeViewer(); });
+  }
+  function applyViewer(){ const img=$('nodoImageViewerImg'); if(img) img.style.transform=`translate(${viewerState.x}px,${viewerState.y}px) scale(${viewerState.scale}) rotate(${viewerState.rot}deg)`; }
+  function closeViewer(){ $('nodoImageViewer')?.classList.remove('show'); }
+  window.nodoOpenImageViewer = function(src){ ensureViewer(); viewerState={scale:1,x:0,y:0,rot:0,dragging:false,sx:0,sy:0,ox:0,oy:0,src:String(src||'')}; const img=$('nodoImageViewerImg'); img.src=viewerState.src; applyViewer(); $('nodoImageViewer').classList.add('show'); };
+  document.addEventListener('click',e=>{
+    const img=e.target && e.target.closest ? e.target.closest('.chat-bubble img, #chatBody img, .verify-box img, .modal img') : null;
+    if(!img || img.closest('#nodoImageViewer') || img.classList.contains('logo')) return;
+    e.preventDefault(); e.stopPropagation(); window.nodoOpenImageViewer(img.src);
+  }, true);
+  function markZoomable(){ document.querySelectorAll('.chat-bubble img,#chatBody img,.verify-box img,.modal img').forEach(img=>{ if(!img.classList.contains('logo')) img.classList.add('nodo-img-zoomable'); }); }
+  const mo=new MutationObserver(()=>markZoomable());
+  document.addEventListener('DOMContentLoaded',()=>{ installIntuitiveUI(); markZoomable(); mo.observe(document.body,{subtree:true,childList:true}); renderWalletSelectWorkerInicio(); renderWalletSelectWorkerManual(); });
+  window.addEventListener('load',()=>setTimeout(()=>{ installIntuitiveUI(); try{ renderBilleteras(); renderOpsWallets(); renderWalletSelectWorkerInicio(); renderWalletSelectWorkerManual(); }catch(e){} },900));
+
+})();
+</script>
+
 </body>
 </html>
