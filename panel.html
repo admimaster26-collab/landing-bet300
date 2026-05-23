@@ -203,6 +203,27 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
 .transfer-chat-card.clean .transfer-chat-note{color:#ffd98f;font-size:12px;margin-top:10px;line-height:1.35}
 
 
+
+/* === WORKER RESULTADO LINDO V18 === */
+.worker-result-card{
+  background:#101722;
+  border:1px solid #30384a;
+  border-radius:14px;
+  padding:10px;
+  line-height:1.45;
+  max-width:420px;
+}
+.worker-result-card.ok{border-color:rgba(18,183,106,.45);background:rgba(18,183,106,.075)}
+.worker-result-card.warn{border-color:rgba(253,176,34,.45);background:rgba(253,176,34,.085)}
+.worker-result-card.danger{border-color:rgba(240,68,56,.45);background:rgba(240,68,56,.075)}
+.worker-result-card.compact{max-height:170px;overflow:auto;min-width:260px}
+.worker-result-card.modal{max-width:none;font-size:13px}
+.worker-result-card pre{white-space:pre-wrap;word-break:break-word;margin:0;font-family:Arial,sans-serif;color:#fff;font-size:12px}
+.worker-result-title{font-weight:900;margin-bottom:6px;font-size:13px}
+.worker-result-copy{margin-top:8px;width:auto;padding:7px 9px;border-radius:9px;background:#2d3443;color:#fff;font-size:11px}
+.worker-error-card{background:rgba(240,68,56,.08);border:1px solid rgba(240,68,56,.38);border-radius:12px;padding:9px;color:#ffd0d0;white-space:pre-wrap;word-break:break-word;font-size:12px;max-width:420px}
+
+
 /* === SALDOS OPERATIVOS V16 === */
 .balance-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:16px}
 .balance-card{background:#151c2a;border:1px solid #30384a;border-radius:16px;padding:14px}
@@ -1258,8 +1279,7 @@ async function abrirWorkerLogs(jobId){
         ${verifyRow("Monto", money(j.monto || 0))}
         ${verifyRow("Estado", j.estado || "-")}
         ${verifyRow("Intentos", `${j.intentos || 0} / ${j.max_intentos || 3}`)}
-        ${verifyRow("Resultado", j.resultado || "-")}
-        ${verifyRow("Error", j.error_mensaje || "-")}
+        <div style="grid-column:1 / -1">${workerResultadoOErrorHTML(j.resultado || "", j.error_mensaje || "", "modal")}</div>
       </div>
     `;
   }
@@ -2698,6 +2718,41 @@ function workerEstadoBadge(e){
   return `<span class="badge badge-muted">${escapeHtml(e || "-")}</span>`;
 }
 
+
+function workerResultadoClase(resultado){
+  const t = normalizar(resultado || "");
+  if(t.includes("ALERTA") || t.includes("⚠")) return "warn";
+  if(t.includes("ERROR") || t.includes("BLOQUEADO") || t.includes("RECHAZ")) return "danger";
+  if(t.includes("OK") || t.includes("✅")) return "ok";
+  return "";
+}
+
+function workerResultadoHTML(resultado, modo="compact"){
+  const txt = String(resultado || "").trim();
+  if(!txt) return `<span class="small">-</span>`;
+  const cls = workerResultadoClase(txt);
+  const titulo = txt.split(/\r?\n/)[0] || "Resultado worker";
+  return `
+    <div class="worker-result-card ${cls} ${modo}">
+      <div class="worker-result-title">${escapeHtml(titulo)}</div>
+      <pre>${escapeHtml(txt)}</pre>
+    </div>
+  `;
+}
+
+function workerErrorHTML(error, modo="compact"){
+  const txt = String(error || "").trim();
+  if(!txt) return `<span class="small">-</span>`;
+  return `<div class="worker-error-card ${modo}">${escapeHtml(txt)}</div>`;
+}
+
+function workerResultadoOErrorHTML(resultado, error, modo="compact"){
+  const bloques = [];
+  if(resultado) bloques.push(workerResultadoHTML(resultado, modo));
+  if(error) bloques.push(workerErrorHTML(error, modo));
+  return bloques.length ? bloques.join("") : `<span class="small">-</span>`;
+}
+
 function ajustarMontoWorkerManual(){
   const tipo = val("manualWorkerTipo");
   const monto = document.getElementById("manualWorkerMonto");
@@ -2852,10 +2907,7 @@ function renderWorkerJobs(){
       <td>${money(j.monto || 0)}</td>
       <td>${workerEstadoBadge(j.estado)}</td>
       <td>${escapeHtml(j.intentos || 0)} / ${escapeHtml(j.max_intentos || 3)}</td>
-      <td>
-        ${j.resultado ? `<div>${escapeHtml(j.resultado)}</div>` : ""}
-        ${j.error_mensaje ? `<div style="color:#ffb4b4">${escapeHtml(j.error_mensaje)}</div>` : ""}
-      </td>
+      <td>${workerResultadoOErrorHTML(j.resultado || "", j.error_mensaje || "", "compact")}</td>
       <td>
         <button class="mini-btn blue" onclick="abrirDetalleWorkerJob('${escapeAttr(id)}')">Ver</button>
         ${puedeAccionar ? `
@@ -2894,14 +2946,7 @@ function abrirDetalleWorkerJob(jobId){
     </div>
     <div class="verify-box">
       <div class="verify-title">Resultado / error</div>
-      <div class="verify-row">
-        <div class="verify-label">Resultado</div>
-        <div class="verify-value">${escapeHtml(j.resultado || "-")}</div>
-      </div>
-      <div class="verify-row" style="margin-top:8px">
-        <div class="verify-label">Error</div>
-        <div class="verify-value">${escapeHtml(j.error_mensaje || "-")}</div>
-      </div>
+      ${workerResultadoOErrorHTML(j.resultado || "", j.error_mensaje || "", "modal")}
     </div>
   `, async()=>cerrarModal(), "Cerrar");
 }
@@ -3049,6 +3094,7 @@ function renderColaUnificada(){
       worker: s.ESTADO_WORKER || "",
       job: s.WORKER_JOB_ID || "",
       error: s.WORKER_ERROR || "",
+      resultado: ((workerJobs || []).find(j => String(j.id || "") === String(s.WORKER_JOB_ID || "")) || {}).resultado || "",
       solicitudId: s.ID || s.SOLICITUD_ID || ""
     });
   });
@@ -3066,6 +3112,7 @@ function renderColaUnificada(){
         worker: j.estado || "",
         job: j.id || "",
         error: j.error_mensaje || "",
+        resultado: j.resultado || "",
         solicitudId: ""
       });
     });
@@ -3098,7 +3145,7 @@ function renderColaUnificada(){
           <th>Monto</th>
           <th>Estado</th>
           <th>Worker</th>
-          <th>Error</th>
+          <th>Resultado / Error</th>
           <th>Acciones</th>
         </tr>
       </thead>
@@ -3145,7 +3192,7 @@ function renderColaUnificada(){
       <td>${money(r.monto || 0)}</td>
       <td>${estadoBadge(r.estado || "-")}</td>
       <td>${job ? `#${escapeHtml(job)}<br>${workerEstadoBadge(r.worker)}` : workerEstadoBadge(r.worker || "SIN_WORKER")}</td>
-      <td>${r.error ? `<span class="worker-error-chip">${escapeHtml(r.error)}</span>` : `<span class="small">-</span>`}</td>
+      <td>${workerResultadoOErrorHTML(r.resultado || "", r.error || "", "compact")}</td>
       <td>${acciones}</td>
     </tr>`;
   });
