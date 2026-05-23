@@ -7314,5 +7314,186 @@ body.nodo-v6-monitor-left .toast{top:8px!important;right:8px!important;max-width
 })();
 </script>
 
+
+
+<script>
+/* =========================================================
+   NODO PC4 · V7 BILLETERAS PERSISTENTES + CHAT READ OK
+   - Concilia jobs COMPLETADOS del worker contra movimientos de billetera/fichas.
+   - No duplica: la RPC usa worker_job_id como llave.
+   - Refresca saldos después de landing/directo worker.
+   - Refuerza leído de chat en backend para que se recuerde entre operadores/sesiones.
+   Requiere ejecutar: sql_PC4_BILLETERAS_MOVIMIENTOS_PERSISTENTES.sql
+========================================================= */
+(function(){
+  if(window.__NODO_PC4_V7_BILLETERAS_PERSISTENTES__) return;
+  window.__NODO_PC4_V7_BILLETERAS_PERSISTENTES__ = true;
+
+  const S = { lastConciliar:0, busy:false, lastChatRead:{} };
+
+  function pc(){
+    try{return String(window.pcOperativa || pcOperativa || localStorage.getItem('nodo_pc_operativa_lite') || '').toUpperCase();}
+    catch(e){return '';}
+  }
+  function token(){
+    try{return requireSessionToken();}catch(e){}
+    try{return window.panelSessionToken || panelSessionToken || localStorage.getItem('nodo_panel_session_token_lite') || '';}
+    catch(e){return '';}
+  }
+  function esc(v){
+    if(typeof escapeHtml === 'function') return escapeHtml(v);
+    return String(v??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+  }
+  function set(id, html){
+    if(typeof setBox === 'function') return setBox(id, html);
+    const el=document.getElementById(id); if(el) el.innerHTML=html;
+  }
+  function aviso(msg,type='green'){
+    try{ if(typeof toast === 'function') toast(msg,type); }catch(e){}
+  }
+
+  async function refrescarSaldosYVista(){
+    try{ if(typeof cargarSaldosOperativos === 'function') await cargarSaldosOperativos(true); }catch(e){}
+    try{ if(typeof cargarBilleteras === 'function') await cargarBilleteras(); }catch(e){}
+    try{ if(typeof renderSelectsAjustes === 'function') renderSelectsAjustes(); }catch(e){}
+    try{ if(typeof renderCentroOperativo === 'function') renderCentroOperativo(); }catch(e){}
+    try{ if(typeof renderInicio === 'function') renderInicio(); }catch(e){}
+  }
+
+  window.conciliarMovimientosWorkerPC4 = async function(force=false){
+    const now=Date.now();
+    if(S.busy) return false;
+    if(!force && now - S.lastConciliar < 2200) return false;
+    const p=pc(), t=token();
+    if(!p || !t) return false;
+
+    S.busy = true;
+    S.lastConciliar = now;
+    try{
+      const {data,error} = await supabaseClient.rpc('panel_operativo_conciliar_movimientos_worker', {
+        p_session_token: t,
+        p_pc_codigo: p
+      });
+      if(error){
+        console.warn('Conciliación billeteras no disponible:', error.message || error);
+        return false;
+      }
+      const r = Array.isArray(data) ? data[0] : data;
+      const cant = Number(r?.billetera_movimientos_insertados || 0) + Number(r?.fichas_movimientos_insertados || 0);
+      if(cant > 0){
+        await refrescarSaldosYVista();
+        aviso('💳 Saldos de billeteras actualizados', 'green');
+      }
+      return true;
+    }catch(e){
+      console.warn('Error conciliando billeteras:', e);
+      return false;
+    }finally{
+      S.busy = false;
+    }
+  };
+
+  // Envuelve cargarWorkerJobs: cada vez que llegan jobs, concilia los COMPLETADOS y refresca saldos.
+  const oldCargarWorkerJobs = window.cargarWorkerJobs;
+  if(typeof oldCargarWorkerJobs === 'function'){
+    window.cargarWorkerJobs = async function(...args){
+      const r = await oldCargarWorkerJobs.apply(this,args);
+      setTimeout(()=>window.conciliarMovimientosWorkerPC4(false), 250);
+      setTimeout(()=>refrescarSaldosYVista(), 900);
+      return r;
+    };
+    try{ cargarWorkerJobs = window.cargarWorkerJobs; }catch(e){}
+  }
+
+  // Envuelve refrescarTodo: mantiene los saldos vivos sin depender de F5.
+  const oldRefrescarTodo = window.refrescarTodo;
+  if(typeof oldRefrescarTodo === 'function'){
+    window.refrescarTodo = async function(...args){
+      const r = await oldRefrescarTodo.apply(this,args);
+      setTimeout(()=>window.conciliarMovimientosWorkerPC4(false), 250);
+      setTimeout(()=>refrescarSaldosYVista(), 1000);
+      return r;
+    };
+    try{ refrescarTodo = window.refrescarTodo; }catch(e){}
+  }
+
+  // Después de enviar acción rápida, refresca saldos varias veces porque el worker tarda en completar.
+  function wrapAccion(fnName){
+    const old = window[fnName];
+    if(typeof old !== 'function') return;
+    window[fnName] = async function(...args){
+      const r = await old.apply(this,args);
+      [1200, 3500, 7000, 12000].forEach(ms=>setTimeout(()=>{
+        window.conciliarMovimientosWorkerPC4(true);
+        refrescarSaldosYVista();
+      }, ms));
+      return r;
+    };
+    try{ eval(fnName + ' = window[fnName]'); }catch(e){}
+  }
+  wrapAccion('crearWorkerJobManualInicio');
+  wrapAccion('crearWorkerJobManualDesdePanel');
+
+  // Refuerzo de leído de chat persistente: al abrir chat o responder, marca mensajes como leídos en Supabase.
+  async function marcarChatLeidoPersistente(chatId){
+    chatId = String(chatId || '').trim();
+    if(!chatId) return;
+    const t=token();
+    if(!t) return;
+    const now=Date.now();
+    if(S.lastChatRead[chatId] && now - S.lastChatRead[chatId] < 2500) return;
+    S.lastChatRead[chatId]=now;
+    try{
+      await supabaseClient.rpc('panel_operativo_marcar_chat_leido', {
+        p_session_token: t,
+        p_chat_id: Number(chatId)
+      });
+      if(typeof cargarChats === 'function') setTimeout(()=>cargarChats(true), 350);
+    }catch(e){
+      console.warn('No se pudo persistir leído de chat:', e.message || e);
+    }
+  }
+
+  const oldAbrirChat = window.abrirChat;
+  if(typeof oldAbrirChat === 'function'){
+    window.abrirChat = async function(id){
+      const r = await oldAbrirChat.apply(this,arguments);
+      marcarChatLeidoPersistente(id);
+      return r;
+    };
+    try{ abrirChat = window.abrirChat; }catch(e){}
+  }
+
+  const oldEnviarChat = window.enviarChat;
+  if(typeof oldEnviarChat === 'function'){
+    window.enviarChat = async function(){
+      const id = window.chatActualId || (typeof chatActualId !== 'undefined' ? chatActualId : '');
+      const r = await oldEnviarChat.apply(this,arguments);
+      marcarChatLeidoPersistente(id);
+      return r;
+    };
+    try{ enviarChat = window.enviarChat; }catch(e){}
+  }
+
+  // Timer liviano: si el worker completa en segundo plano, el saldo se reconcilia solo.
+  if(!window.__NODO_PC4_V7_BILLETERAS_TIMER__){
+    window.__NODO_PC4_V7_BILLETERAS_TIMER__ = setInterval(()=>{
+      window.conciliarMovimientosWorkerPC4(false);
+    }, 3500);
+  }
+
+  // Indicador discreto en inicio/worker si falta SQL.
+  setTimeout(async()=>{
+    const ok = await window.conciliarMovimientosWorkerPC4(true);
+    if(!ok){
+      const el=document.getElementById('manualWorkerResultadoInicio');
+      if(el && !String(el.innerHTML||'').trim()){
+        set('manualWorkerResultadoInicio', '<div class="alert-box">💳 Para que las billeteras actualicen saldo automáticamente, ejecutá primero el SQL de movimientos persistentes.</div>');
+      }
+    }
+  }, 1800);
+})();
+</script>
+
 </body>
 </html>
