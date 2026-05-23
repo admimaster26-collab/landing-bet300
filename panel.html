@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>NODO · OPERATIVO PC4 COMPACTO V5</title>
+<title>NODO · OPERATIVO</title>
 
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif}
@@ -390,7 +390,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
           <div>
             <h1 style="font-size:26px">Chat interno</h1>
-            <div class="small">Consultas desde landing. Podés pegar texto o imágenes con Ctrl + V.</div>
+            <div class="small">Consultas desde landing..</div>
           </div>
           <button class="mini-btn blue" onclick="cargarChats(true)">🔄 Actualizar chats</button>
         </div>
@@ -440,7 +440,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
                 <div class="small" style="margin-top:6px">Solo muestra billeteras activas/disponibles de la PC operativa actual.</div>
               </div>
               <input id="chatFile" type="file" accept="image/*" style="display:none" onchange="tomarImagenChatFile()">
-              <div class="small" style="text-align:center;margin-top:8px">Ctrl + V admite texto e imagen del portapapeles.</div>
+              <div class="small" style="text-align:center;margin-top:8px">admite texto e imagen del portapapeles.</div>
             </div>
           </div>
         </div>
@@ -458,7 +458,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
         <div class="card">
           <h2 class="card-title">⚡ Acción manual al worker</h2>
           <div class="alert-box">
-            Usá esto cuando el operador ya revisó el caso y necesita generar una carga/retiro/validación sin que el usuario lo inicie desde la landing.
+            Solo uso para ordenes manuales.
           </div>
 
           <div class="filters worker-panel-grid">
@@ -483,7 +483,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
               <select id="manualWorkerBilletera">
                 <option value="">Sin billetera / solo validar</option>
               </select>
-              <div class="small">Carga: suma dinero a billetera. Retiro: resta dinero. En fichas es al revés.</div>
+              <div class="small">carga/retiro</div>
             </div>
             <div>
               <label>Observación</label>
@@ -1574,7 +1574,7 @@ function renderSaldosOperativos(){
       <div class="balance-card">
         <div class="balance-title">Saldos operativos</div>
         <div class="balance-value">Pendiente</div>
-        <div class="balance-sub">Ejecutá el SQL de movimientos para ver fichas y saldos de billeteras en tiempo operativo.</div>
+        <div class="balance-sub">No hagas coble clic.</div>
       </div>
     `;
     return;
