@@ -7810,5 +7810,334 @@ html,body{height:100%;overflow:hidden!important}.main{height:100vh!important;ove
 })();
 </script>
 
+
+
+
+
+<script>
+/* =========================================================
+   NODO V12 · Centro Operativo Unificado conservando V11
+   - Una sola vista para landing/manual/worker.
+   - Scroll propio que no se pelea con refrescos antiguos.
+   - Resultados resumidos con tilde/alerta; detalle sigue en modal.
+   - MP visible solo como bloque de pagos pendientes/importados.
+   - No toca chat ni render de mensajes/tarjetas.
+========================================================= */
+(function(){
+  if(window.__NODO_V12_CENTRO_UNIFICADO__) return;
+  window.__NODO_V12_CENTRO_UNIFICADO__ = true;
+
+  function safe(fn, fallback){ try{ return fn(); }catch(e){ return fallback; } }
+  function $(id){ return document.getElementById(id); }
+  function arr(name){ return safe(()=>Array.isArray(window[name]) ? window[name] : (eval(name) || []), []); }
+  function esc(v){ if(typeof escapeHtml==='function') return escapeHtml(v); return String(v??'').replace(/[&<>"]/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+  function attr(v){ if(typeof escapeAttr==='function') return escapeAttr(v); return esc(v); }
+  function norm(v){ return String(v||'').trim().toUpperCase(); }
+  function nlow(v){ return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+  function pesos(v){ if(typeof money==='function') return money(v); const n=Number(v||0); return '$ '+n.toLocaleString('es-AR',{maximumFractionDigits:0}); }
+  function fecha(v){ if(typeof formatFecha==='function') return formatFecha(v); if(!v) return '-'; const d=new Date(v); return isNaN(d)?String(v):d.toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }
+  function badgeEstado(v){ if(typeof estadoBadge==='function') return estadoBadge(v); return `<span class="status-badge">${esc(v||'-')}</span>`; }
+  function currentPc(){ return safe(()=>pcOperativa || window.pcOperativa || '', ''); }
+
+  function isPendienteEstado(v){
+    const e=norm(v);
+    return ['PENDIENTE','NUEVA','NUEVO','EN_REVISION','REINTENTAR','ERROR','ERROR_JOB','REQUIERE_MANUAL','PROCESANDO'].includes(e);
+  }
+
+  function solicitudesV10(){ return arr('solicitudes'); }
+  function workerJobsV10(){ return arr('workerJobs'); }
+  function saldosV10(){ return safe(()=>window.saldosOperativos || saldosOperativos || {}, {}); }
+  function chatsV10(){ return arr('chats'); }
+
+  function resumenResultadoV10(resultado, error, workerEstado){
+    const e=norm(error||'');
+    const st=norm(workerEstado||'');
+    const r=String(resultado||'');
+    if(e) return `<span class="v10-result v10-error">⚠️ Error</span>`;
+    if(st==='COMPLETADO' || r.includes('OK')) return `<span class="v10-result v10-ok">✅ OK</span>`;
+    if(st==='CANCELADO') return `<span class="v10-result v10-muted">⛔ Cancelado</span>`;
+    if(st==='REINTENTAR') return `<span class="v10-result v10-warn">↻ Reintentar</span>`;
+    if(st==='PROCESANDO') return `<span class="v10-result v10-info">⏳ Procesando</span>`;
+    return `<span class="v10-result v10-muted">-</span>`;
+  }
+
+  function billeteraNombrePorId(id){
+    const bs=(saldosV10().billeteras||[]);
+    const b=bs.find(x=>String(x.id||x.billetera_id)===String(id));
+    return b ? (b.nombre_visible||b.nombre||b.titular||('Billetera '+id)) : '';
+  }
+
+  function matchMpPendienteParaSolicitud(sid){
+    const cards = Array.from(document.querySelectorAll('#mpPagosInicio .mp-card,[data-solicitud-id]'));
+    return cards.some(c => String(c.textContent||'').includes('#'+sid));
+  }
+
+  function buildRowsV10(){
+    const solicitudes=solicitudesV10();
+    const jobs=workerJobsV10();
+    const rows=[];
+    solicitudes.forEach(s=>{
+      const id=s.ID||s.id||s.SOLICITUD_ID||s.solicitud_id||'';
+      const jobId=s.WORKER_JOB_ID||s.worker_job_id||'';
+      const job=jobs.find(j=>String(j.id||'')===String(jobId||''));
+      const tipo=s.TIPO_SOLICITUD||s.TIPO||s.tipo||'';
+      const monto=s.MONTO_DECLARADO||s.MONTO_REAL||s.monto||0;
+      const billetera=s.BILLETERA_NOMBRE||s.billetera_nombre||s.nombre_billetera||billeteraNombrePorId(s.BILLETERA_ID||s.billetera_id)||'';
+      rows.push({
+        kind:'solicitud', origen:'LANDING', id, jobId,
+        fecha:s.FECHA_CREACION||s.created_at||s.FECHA||s.fecha,
+        usuario:s.USUARIO||s.usuario||s.USUARIO_JUGADOR||'',
+        subtitulo:s.NOMBRE_COMPLETO||s.nombre_completo||s.titular_transferencia||s.TITULAR_TRANSFERENCIA||'',
+        tipo, monto, billetera,
+        estado:s.ESTADO||s.estado||'',
+        workerEstado:s.ESTADO_WORKER||s.estado_worker||(job?job.estado:''),
+        error:s.WORKER_ERROR||s.worker_error||(job?job.error_mensaje:''),
+        resultado:job?job.resultado:'',
+        raw:s
+      });
+    });
+    jobs.filter(j=>!j.solicitud_id).forEach(j=>{
+      rows.push({
+        kind:'job', origen:'MANUAL', id:'', jobId:j.id||'', fecha:j.created_at||j.updated_at,
+        usuario:j.usuario||'', subtitulo:'', tipo:j.tipo_accion||'', monto:j.monto||0,
+        billetera:billeteraNombrePorId(j.billetera_id||j.billeteraId)||'',
+        estado:j.estado||'', workerEstado:j.estado||'', error:j.error_mensaje||'', resultado:j.resultado||'', raw:j
+      });
+    });
+    rows.sort((a,b)=>new Date(b.fecha||0)-new Date(a.fecha||0));
+    return rows;
+  }
+
+  function renderKpisV10(){
+    const solicitudes=solicitudesV10();
+    const jobs=workerJobsV10();
+    const sal=saldosV10();
+    const bs=sal.billeteras||[];
+    const fichas=Number(sal.fichas?.saldo||0);
+    const total=bs.reduce((a,b)=>a+Number(b.saldo||0),0);
+    const pendientes=solicitudes.filter(s=>isPendienteEstado(s.ESTADO||s.estado)).length;
+    const workerActivos=jobs.filter(j=>isPendienteEstado(j.estado)).length;
+    const chatSinLeer=chatsV10().reduce((a,c)=>a+Number(c.SIN_LEER||c.sin_leer||0),0);
+    return `<div class="v10-kpis">
+      <div class="v10-kpi"><span>Fichas</span><b>${pesos(fichas)}</b></div>
+      <div class="v10-kpi"><span>Billeteras</span><b>${pesos(total)}</b></div>
+      <div class="v10-kpi"><span>Pendientes</span><b>${pendientes}</b></div>
+      <div class="v10-kpi"><span>Worker</span><b>${workerActivos}</b></div>
+      <div class="v10-kpi"><span>Chat</span><b>${chatSinLeer}</b></div>
+    </div>`;
+  }
+
+  function renderWalletsV10(){
+    const bs=(saldosV10().billeteras||[]).slice(0,6);
+    if(!bs.length) return '';
+    return `<div class="v10-wallets">${bs.map(b=>`<div class="v10-wallet">
+      <b>${esc(b.nombre_visible||b.nombre||'Billetera')}</b>
+      <strong>${pesos(b.saldo||0)}</strong>
+      <span>${esc(b.alias||'')}</span>
+    </div>`).join('')}</div>`;
+  }
+
+  function accionesV10(r){
+    const sid=String(r.id||'');
+    const job=String(r.jobId||'');
+    const tipo=nlow(r.tipo||'');
+    let h='<div class="v10-actions">';
+    if(r.kind==='solicitud' && sid){
+      h+=`<button class="mini-btn blue" onclick="verSolicitudInicio('${attr(sid)}')">Ver</button>`;
+      if(tipo.includes('carga')) h+=`<button class="mini-btn cyan" onclick="buscarMpSolicitudV10('${attr(sid)}')">Buscar MP</button>`;
+      if(isPendienteEstado(r.estado)){
+        if(tipo.includes('retiro')) h+=`<button class="mini-btn green" onclick="abrirCerrarRetiro('${attr(sid)}')">Aprobar retiro</button>`;
+        else h+=`<button class="mini-btn green" onclick="abrirAprobarSolicitud('${attr(sid)}')">Aprobar</button>`;
+        h+=`<button class="mini-btn red" onclick="abrirRechazarSolicitud('${attr(sid)}')">Rechazar</button>`;
+      }
+    }
+    if(job){
+      h+=`<button class="mini-btn blue" onclick="abrirWorkerLogs('${attr(job)}')">Logs</button>`;
+      if(!['COMPLETADO','CANCELADO'].includes(norm(r.workerEstado))){
+        h+=`<button class="mini-btn green" onclick="workerPanelReintentarJob('${attr(job)}')">Reintentar</button>`;
+        h+=`<button class="mini-btn red" onclick="workerPanelCancelarJob('${attr(job)}')">Cancelar</button>`;
+      }
+    }
+    h+='</div>';
+    return h;
+  }
+
+  function renderTablaV10(force=false){
+    const box=$('nodoV10Tabla');
+    if(!box) return;
+    const scroll=$('nodoV10Scroll');
+    const oldTop=scroll?scroll.scrollTop:0;
+    const oldLeft=scroll?scroll.scrollLeft:0;
+    const q=nlow(($('v10FiltroTexto')||{}).value||'');
+    const f=norm(($('v10FiltroEstado')||{}).value||'');
+    let rows=buildRowsV10();
+    if(f==='PENDIENTES') rows=rows.filter(r=>isPendienteEstado(r.estado)||isPendienteEstado(r.workerEstado));
+    if(f==='MP') rows=rows.filter(r=>nlow(r.tipo).includes('carga'));
+    if(f==='ERRORES') rows=rows.filter(r=>r.error||['ERROR','ERROR_JOB','REINTENTAR','REQUIERE_MANUAL'].includes(norm(r.workerEstado)));
+    if(f==='COMPLETADOS') rows=rows.filter(r=>['COMPLETADO','ACREDITADA','PAGADA','APROBADA_MANUAL','APROBADA_MANUAL_OK'].includes(norm(r.estado))||norm(r.workerEstado)==='COMPLETADO');
+    if(q) rows=rows.filter(r=>nlow(`${r.id} ${r.jobId} ${r.origen} ${r.usuario} ${r.subtitulo} ${r.tipo} ${r.estado} ${r.workerEstado} ${r.error} ${r.billetera}`).includes(q));
+    rows=rows.slice(0,120);
+    if(!rows.length){ box.innerHTML='<div class="alert-box">No hay operaciones para mostrar.</div>'; return; }
+    box.innerHTML=`<table class="v10-table"><thead><tr>
+      <th>Hora</th><th>Origen</th><th>Usuario</th><th>Billetera</th><th>Tipo</th><th>Monto</th><th>Estado</th><th>Worker</th><th>Resultado</th><th>Acciones</th>
+    </tr></thead><tbody>${rows.map(r=>{
+      const cls=r.origen==='LANDING'?'landing':'manual';
+      const mpHint=(r.kind==='solicitud' && nlow(r.tipo).includes('carga') && isPendienteEstado(r.estado))?'<span class="v10-mp-hint">MP</span>':'';
+      return `<tr>
+        <td>${fecha(r.fecha)}</td>
+        <td><span class="ops-origin ${cls}">${esc(r.origen)}</span></td>
+        <td><b>${esc(r.usuario||'-')}</b>${r.subtitulo?`<small>${esc(r.subtitulo)}</small>`:''}</td>
+        <td>${esc(r.billetera||'-')}</td>
+        <td>${esc(r.tipo||'-')} ${mpHint}</td>
+        <td>${pesos(r.monto||0)}</td>
+        <td>${badgeEstado(r.estado||'-')}</td>
+        <td>${r.jobId?`#${esc(r.jobId)}<br>${badgeEstado(r.workerEstado||'-')}`:badgeEstado(r.workerEstado||'SIN_WORKER')}</td>
+        <td>${resumenResultadoV10(r.resultado,r.error,r.workerEstado)}</td>
+        <td>${accionesV10(r)}</td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+    if(scroll){ requestAnimationFrame(()=>{ scroll.scrollTop=oldTop; scroll.scrollLeft=oldLeft; }); }
+  }
+
+  function renderQuickActionV10(){
+    return `<div class="v10-panel v10-quick">
+      <div class="v10-panel-title">⚡ Acción rápida</div>
+      <div class="v10-quick-grid">
+        <input id="manualWorkerUsuarioInicio" placeholder="Usuario">
+        <select id="manualWorkerTipoInicio" onchange="ajustarMontoWorkerManualInicio()"><option value="VALIDAR_USUARIO">Validar usuario</option><option value="CARGAR_FICHAS">Cargar fichas</option><option value="PROCESAR_RETIRO">Retirar fichas</option></select>
+        <input id="manualWorkerMontoInicio" type="number" min="0" step="1" placeholder="Monto">
+        <select id="manualWorkerBilleteraInicio"><option value="">No aplica / seleccionar billetera</option></select>
+        <input id="manualWorkerObsInicio" class="v10-hidden-obs" placeholder="Observación">
+        <button class="btn btn-green" onclick="crearWorkerJobManualInicio()">Enviar al worker</button>
+      </div>
+      <div id="manualWorkerResultadoInicio" class="v10-mini-result"></div>
+    </div>`;
+  }
+
+  function ensureShellV10(){
+    const root=$('viewInicio');
+    if(!root) return;
+    if($('nodoV10Shell')) return;
+    root.innerHTML=`<div id="nodoV10Shell" class="nodo-v10-shell">
+      <div class="v10-topbar">
+        <div><div class="ops-title">Centro Operativo</div><div class="v10-sub">PC ${esc(currentPc())} · operaciones unificadas</div></div>
+        <div class="v10-top-actions"><button class="mini-btn blue" onclick="refrescarTodoV10(true)">Actualizar</button><button class="mini-btn green" onclick="mostrarVista('chat')">Chat</button><button class="mini-btn yellow" onclick="mostrarVista('ajustes')">Ajustes</button></div>
+      </div>
+      <div id="nodoV10Scroll" class="nodo-v10-scroll">
+        <div id="v10Kpis"></div>
+        <div id="v10Wallets"></div>
+        ${renderQuickActionV10()}
+        <div id="mpPagosInicio" class="v12-mp-compact-zone"></div>
+        <div class="v10-panel"><div class="v10-table-head"><div class="v10-panel-title">📌 Operaciones</div><div class="v10-filters"><select id="v10FiltroEstado" onchange="renderTablaV10(true)"><option value="">Todos</option><option value="PENDIENTES">Pendientes</option><option value="MP">Cargas / MP</option><option value="ERRORES">Errores</option><option value="COMPLETADOS">Completados</option></select><input id="v10FiltroTexto" oninput="renderTablaV10(true)" placeholder="Buscar usuario, solicitud, job..."></div></div><div id="nodoV10Tabla"></div></div>
+      </div>
+    </div>`;
+  }
+
+  function renderCentroV10(force=false){
+    document.body.classList.add('nodo-v10-unificado');
+    ensureShellV10();
+    const scroll=$('nodoV10Scroll');
+    const top=scroll?scroll.scrollTop:0, left=scroll?scroll.scrollLeft:0;
+    const k=$('v10Kpis'); if(k) k.innerHTML=renderKpisV10();
+    const w=$('v10Wallets'); if(w) w.innerHTML=renderWalletsV10();
+    try{ if(typeof renderPagosMpInicio==='function') renderPagosMpInicio(); }catch(e){}
+    try{ if(typeof renderWalletSelectWorkerInicio==='function') renderWalletSelectWorkerInicio(); }catch(e){}
+    renderTablaV10(force);
+    if(scroll){ requestAnimationFrame(()=>{ scroll.scrollTop=top; scroll.scrollLeft=left; }); }
+  }
+
+  window.renderTablaV10=renderTablaV10;
+  window.renderCentroOperativo=renderCentroV10;
+  window.renderInicio=renderCentroV10;
+
+  window.buscarMpSolicitudV10 = async function(solicitudId){
+    try{
+      toast('Buscando pagos MP ya importados...', 'blue');
+      if(typeof cargarPagosMp==='function') await cargarPagosMp(true);
+      renderCentroV10(true);
+      const found = String(($('mpPagosInicio')||{}).textContent||'').includes('#'+solicitudId);
+      if(!found){
+        alert('No apareció un pago importado para esta solicitud. Si la transferencia fue reciente, corré npm run mp y después Actualizar.');
+      }
+    }catch(e){ alert('Error buscando MP: '+(e.message||e)); }
+  };
+
+  window.refrescarTodoV10 = async function(force=false){
+    const scroll=$('nodoV10Scroll');
+    const top=scroll?scroll.scrollTop:0, left=scroll?scroll.scrollLeft:0;
+    try{
+      if(typeof refrescarTodo==='function') await refrescarTodo(false);
+      else{
+        if(typeof cargarSolicitudes==='function') await cargarSolicitudes(true);
+        if(typeof cargarWorkerJobs==='function') await cargarWorkerJobs(false);
+        if(typeof cargarSaldosOperativos==='function') await cargarSaldosOperativos(true);
+        if(typeof cargarPagosMp==='function') await cargarPagosMp(true);
+      }
+    }catch(e){ console.warn('V10 refresh:', e); }
+    renderCentroV10(force);
+    if(scroll){ requestAnimationFrame(()=>{ scroll.scrollTop=top; scroll.scrollLeft=left; }); }
+  };
+
+  const oldMostrarVista = window.mostrarVista;
+  if(typeof oldMostrarVista === 'function'){
+    window.mostrarVista = function(vista){
+      if(vista==='solicitudes' || vista==='worker') vista='inicio';
+      const r=oldMostrarVista.call(this,vista);
+      if(vista==='inicio') setTimeout(()=>renderCentroV10(true),40);
+      return r;
+    };
+    try{ mostrarVista = window.mostrarVista; }catch(e){}
+  }
+
+  function bootV10(){
+    document.body.classList.add('nodo-v10-unificado');
+    ['navSolicitudes','navWorker'].forEach(id=>{ const el=$(id); if(el) el.style.display='none'; });
+    renderCentroV10(true);
+    setTimeout(()=>renderCentroV10(true),700);
+    setTimeout(()=>renderCentroV10(true),1800);
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', bootV10);
+  else bootV10();
+})();
+</script>
+
+<style>
+body.nodo-v10-unificado #navSolicitudes,
+body.nodo-v10-unificado #navWorker{display:none!important}
+body.nodo-v10-unificado #viewInicio{height:calc(100vh - 8px)!important;overflow:hidden!important;padding:8px!important}
+body.nodo-v10-unificado .main{overflow:hidden!important;height:100vh!important}
+.nodo-v10-shell{height:100%;display:flex;flex-direction:column;gap:8px;min-width:0}
+.v10-topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:4px 6px;flex:0 0 auto}
+.v10-sub{font-size:12px;color:#9aa7b8;margin-top:2px}.v10-top-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.nodo-v10-scroll{flex:1 1 auto;min-height:0;overflow:auto!important;overscroll-behavior:contain;scroll-behavior:auto!important;padding:0 6px 22px 0;scrollbar-gutter:stable both-edges}
+.v10-kpis{display:grid;grid-template-columns:repeat(5,minmax(110px,1fr));gap:8px;margin-bottom:8px}.v10-kpi{background:#121925;border:1px solid #263245;border-radius:14px;padding:9px 10px}.v10-kpi span{display:block;font-size:10px;color:#a6b0bf;text-transform:uppercase;font-weight:900;letter-spacing:.06em}.v10-kpi b{display:block;font-size:20px;color:#dfffe7;margin-top:3px}
+.v10-wallets{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-bottom:8px}.v10-wallet{background:#101721;border:1px solid #243144;border-radius:14px;padding:9px}.v10-wallet b{display:block;font-size:12px}.v10-wallet strong{display:block;color:#bcf7c8;font-size:20px;margin-top:3px}.v10-wallet span{display:block;color:#9aa7b8;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.v10-panel{background:#0f1621;border:1px solid #263245;border-radius:16px;padding:10px;margin-bottom:9px}.v10-panel-title{font-size:18px;font-weight:950;color:#f3f6ff}.v10-table-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.v10-filters{display:flex;gap:8px;align-items:center}.v10-filters select,.v10-filters input{height:34px;margin:0!important;border-radius:10px}.v10-filters input{width:250px}
+.v10-quick-grid{display:grid;grid-template-columns:1.2fr 1fr .8fr 1.4fr 1px 1fr;gap:8px;align-items:end}.v10-quick-grid input,.v10-quick-grid select{height:34px;margin:0!important;border-radius:10px}.v10-hidden-obs{display:none!important}.v10-mini-result{font-size:12px;margin-top:6px;color:#93f5ac}
+.v10-table{width:100%;border-collapse:collapse;min-width:1060px}.v10-table th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#abb6c8;text-align:left;background:#151d2a;position:sticky;top:0;z-index:2}.v10-table th,.v10-table td{padding:9px 8px;border-bottom:1px solid #212b3c;vertical-align:top}.v10-table td{font-size:12px}.v10-table td small{display:block;color:#9aa7b8;margin-top:2px;font-size:10px}.v10-table tr:hover{background:#121b29}.v10-result{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:4px 8px;font-weight:950;font-size:11px}.v10-ok{background:#14331e;color:#bfffcf}.v10-error{background:#451b22;color:#ffd0d6}.v10-warn{background:#4a3712;color:#ffe0a1}.v10-info{background:#16284a;color:#cfe0ff}.v10-muted{background:#202938;color:#aeb8c8}.v10-actions{display:flex;gap:5px;flex-wrap:wrap}.v10-mp-hint{display:inline-flex;background:#183b55;color:#b7e9ff;border:1px solid #2a6d96;border-radius:999px;padding:2px 6px;font-size:10px;font-weight:900;margin-left:4px}
+body.nodo-v10-unificado .mp-detect-sub,body.nodo-v10-unificado .ops-alert,body.nodo-v10-unificado .page-help,body.nodo-v10-unificado .hint-panel{display:none!important}
+body.nodo-v10-unificado #mpPagosInicio .mp-card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:8px}body.nodo-v10-unificado #mpPagosInicio .mp-card{min-height:auto;padding:10px}body.nodo-v10-unificado #mpPagosInicio .mp-card:nth-child(n+4){display:none!important}
+body.nodo-v10-unificado .ops-wallet-strip,body.nodo-v10-unificado .ops-kpis{display:none!important}
+@media(max-width:1100px){.v10-kpis{grid-template-columns:repeat(3,minmax(100px,1fr))}.v10-quick-grid{grid-template-columns:1fr 1fr}.v10-filters input{width:180px}.v10-table{min-width:980px}}
+</style>
+
+
+<style>
+/* V12 ajustes finales: MP compacto y acción rápida protagonista */
+body.nodo-v10-unificado #mpPagosInicio{max-height:164px!important;overflow:auto!important;margin-bottom:8px!important;scrollbar-gutter:stable!important}
+body.nodo-v10-unificado #mpPagosInicio .mp-detect-wrap,
+body.nodo-v10-unificado #mpPagosInicio .mp-detect-compact-v11{padding:8px!important;margin:6px 0!important}
+body.nodo-v10-unificado #mpPagosInicio .mp-card{padding:8px!important;border-radius:12px!important;font-size:11px!important}
+body.nodo-v10-unificado #mpPagosInicio .mp-card-grid,
+body.nodo-v10-unificado #mpPagosInicio .mp-compact-list{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))!important;gap:6px!important}
+body.nodo-v10-unificado #mpPagosInicio .mp-amount,
+body.nodo-v10-unificado #mpPagosInicio .mp-card-amount{font-size:18px!important}
+body.nodo-v10-unificado #mpPagosInicio .mp-actions .mini-btn,
+body.nodo-v10-unificado #mpPagosInicio .mp-actions-compact .mini-btn{padding:5px 7px!important;font-size:10.5px!important}
+body.nodo-v10-unificado .v10-quick{border-color:rgba(18,183,106,.35)!important;background:linear-gradient(145deg,rgba(18,183,106,.085),rgba(61,90,254,.045))!important}
+body.nodo-v10-unificado .v10-quick .v10-panel-title{color:#eaffef!important}
+body.nodo-v10-unificado #nodoV10Tabla{overflow:auto!important;max-height:none!important}
+</style>
+
 </body>
 </html>
