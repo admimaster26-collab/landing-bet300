@@ -8139,5 +8139,266 @@ body.nodo-v10-unificado .v10-quick .v10-panel-title{color:#eaffef!important}
 body.nodo-v10-unificado #nodoV10Tabla{overflow:auto!important;max-height:none!important}
 </style>
 
+
+<style>
+/* =========================================================
+   NODO V13 ULTRA · Ajustes visuales finales conservadores
+   - Mantiene estructura V12 híbrida.
+   - Reemplaza KPI de billeteras total por datos útiles de fichas.
+   - Acción rápida visible y completa.
+   - Quita avisos operativos innecesarios.
+   ========================================================= */
+body.nodo-v10-unificado .v10-kpis{
+  grid-template-columns: 1.45fr 1.05fr .75fr .75fr .75fr !important;
+}
+body.nodo-v10-unificado .v10-kpi.v13-live{
+  border-color: rgba(34,197,94,.30)!important;
+  background: linear-gradient(145deg, rgba(18,183,106,.13), rgba(15,23,42,.82))!important;
+}
+body.nodo-v10-unificado .v10-kpi.v13-live b{
+  color:#d8ffe1!important;
+  font-size: clamp(22px, 2.25vw, 34px)!important;
+}
+body.nodo-v10-unificado .v10-kpi.v13-fichas b{
+  color:#fef3c7!important;
+}
+body.nodo-v10-unificado .v13-kpi-sub{
+  display:block;
+  margin-top:4px;
+  font-size:10px;
+  color:#93a4b8;
+  line-height:1.15;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+body.nodo-v10-unificado .v10-quick{
+  display:block!important;
+  padding:12px!important;
+  margin:10px 0 10px!important;
+}
+body.nodo-v10-unificado .v10-quick-grid{
+  display:grid!important;
+  grid-template-columns: 1.05fr .95fr .75fr 1.15fr auto!important;
+  gap:8px!important;
+  align-items:end!important;
+}
+body.nodo-v10-unificado .v10-quick-grid input,
+body.nodo-v10-unificado .v10-quick-grid select{
+  display:block!important;
+  width:100%!important;
+  min-width:0!important;
+  height:36px!important;
+  padding:7px 10px!important;
+  border-radius:10px!important;
+  margin:0!important;
+  box-sizing:border-box!important;
+}
+body.nodo-v10-unificado .v10-quick-grid button{
+  height:36px!important;
+  margin:0!important;
+  white-space:nowrap!important;
+  padding:0 14px!important;
+}
+body.nodo-v10-unificado #manualWorkerResultadoInicio:empty{
+  display:none!important;
+}
+body.nodo-v10-unificado #manualWorkerResultadoInicio .alert-box,
+body.nodo-v10-unificado #manualWorkerResultadoInicio [class*="alert"]{
+  display:none!important;
+}
+body.nodo-v10-unificado .v13-clear-note,
+body.nodo-v10-unificado .ops-alert,
+body.nodo-v10-unificado .hint-panel,
+body.nodo-v10-unificado .page-help{
+  display:none!important;
+}
+body.nodo-v10-unificado #mpPagosInicio{
+  max-height:130px!important;
+}
+body.nodo-v10-unificado #mpPagosInicio .mp-compact-row{
+  min-height:42px!important;
+}
+body.nodo-v10-unificado #nodoV10Scroll{
+  scroll-behavior:auto!important;
+  overscroll-behavior:contain!important;
+}
+@media(max-width:1100px){
+  body.nodo-v10-unificado .v10-kpis{
+    grid-template-columns: repeat(3,minmax(120px,1fr))!important;
+  }
+  body.nodo-v10-unificado .v10-quick-grid{
+    grid-template-columns: 1fr 1fr!important;
+  }
+  body.nodo-v10-unificado .v10-quick-grid button{
+    grid-column:1 / -1!important;
+  }
+}
+</style>
+
+<script>
+/* =========================================================
+   NODO V13 ULTRA · Overrides finales
+   ========================================================= */
+(function(){
+  if(window.__NODO_V13_ULTRA_INSTALLED__) return;
+  window.__NODO_V13_ULTRA_INSTALLED__ = true;
+
+  window.__nodoSaldoAgenteUltra = window.__nodoSaldoAgenteUltra || null;
+
+  function uSafe(fn, fb){
+    try { return fn(); } catch(e){ return fb; }
+  }
+  function uPc(){
+    return uSafe(()=> (typeof currentPc === "function" ? currentPc() : (window.pcOperativa || pcOperativa || localStorage.getItem("nodo_pc_operativa_lite") || "P1")), "P1");
+  }
+  function uToken(){
+    return uSafe(()=> (typeof requireSessionToken === "function" ? requireSessionToken() : (window.panelSessionToken || panelSessionToken || "")), "");
+  }
+  function uMoney(v){
+    try { return typeof pesos === "function" ? pesos(v) : "$ " + Number(v||0).toLocaleString("es-AR"); }
+    catch(e){ return "$ " + String(v || 0); }
+  }
+  function uEsc(v){
+    try { return typeof esc === "function" ? esc(v) : String(v ?? "").replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
+    catch(e){ return String(v ?? ""); }
+  }
+  function uN(v){ return String(v||"").trim().toUpperCase(); }
+
+  window.cargarSaldoAgenteUltra = async function cargarSaldoAgenteUltra(){
+    try{
+      if(!window.supabaseClient && typeof supabaseClient === "undefined") return null;
+      const client = window.supabaseClient || supabaseClient;
+      const {data,error} = await client.rpc("panel_operativo_get_saldo_agente_estado", {
+        p_session_token: uToken(),
+        p_pc_codigo: uPc()
+      });
+      if(error) return null;
+      const row = Array.isArray(data) ? (data[0] || null) : (data || null);
+      if(row) window.__nodoSaldoAgenteUltra = row;
+      const k = document.getElementById("v10Kpis");
+      if(k && typeof renderKpisV10 === "function") k.innerHTML = renderKpisV10();
+      return row;
+    }catch(e){
+      return null;
+    }
+  };
+
+  window.renderKpisV10 = function renderKpisV10(){
+    const solicitudes = (typeof solicitudesV10 === "function" ? solicitudesV10() : (window.solicitudes || []));
+    const jobs = (typeof workerJobsV10 === "function" ? workerJobsV10() : (window.workerJobs || []));
+    const chats = (typeof chatsV10 === "function" ? chatsV10() : (window.chats || []));
+    const sal = (typeof saldosV10 === "function" ? saldosV10() : (window.saldosOperativos || {}));
+    const fichasNetas = Number(sal?.fichas?.saldo || 0);
+    const saldoLive = window.__nodoSaldoAgenteUltra || null;
+    const saldoAgente = saldoLive && Number.isFinite(Number(saldoLive.saldo_agente)) ? Number(saldoLive.saldo_agente) : null;
+    const ultimo = saldoLive ? `${saldoLive.ultimo_tipo || "-"} · ${saldoLive.ultimo_usuario || "-"}` : "El worker lo actualiza al operar";
+    const pendientes = solicitudes.filter(s=>{
+      try { return typeof isPendienteEstado === "function" ? isPendienteEstado(s.ESTADO || s.estado) : ["PENDIENTE","NUEVA","EN_REVISION"].includes(uN(s.ESTADO||s.estado)); }
+      catch(e){ return false; }
+    }).length;
+    const workerActivos = jobs.filter(j=>{
+      try { return typeof isPendienteEstado === "function" ? isPendienteEstado(j.estado || j.ESTADO) : ["PENDIENTE","PROCESANDO","REINTENTAR","ERROR","ERROR_JOB","REQUIERE_MANUAL"].includes(uN(j.estado||j.ESTADO)); }
+      catch(e){ return false; }
+    }).length;
+    const chatSinLeer = chats.reduce((a,c)=>a+Number(c.SIN_LEER||c.sin_leer||0),0);
+
+    return `<div class="v10-kpis">
+      <div class="v10-kpi v13-live">
+        <span>Saldo agente real</span>
+        <b>${saldoAgente === null ? "Sin dato" : uMoney(saldoAgente)}</b>
+        <small class="v13-kpi-sub">${uEsc(ultimo)}</small>
+      </div>
+      <div class="v10-kpi v13-fichas">
+        <span>Fichas netas</span>
+        <b>${uMoney(fichasNetas)}</b>
+        <small class="v13-kpi-sub">Carga resta · retiro suma</small>
+      </div>
+      <div class="v10-kpi"><span>Pendientes</span><b>${pendientes}</b></div>
+      <div class="v10-kpi"><span>Worker</span><b>${workerActivos}</b></div>
+      <div class="v10-kpi"><span>Chat</span><b>${chatSinLeer}</b></div>
+    </div>`;
+  };
+
+  window.renderQuickActionV10 = function renderQuickActionV10(){
+    return `<div class="v10-panel v10-quick">
+      <div class="v10-panel-title">⚡ Acción rápida</div>
+      <div class="v10-quick-grid">
+        <input id="manualWorkerUsuarioInicio" placeholder="Usuario">
+        <select id="manualWorkerTipoInicio" onchange="ajustarMontoWorkerManualInicio()">
+          <option value="VALIDAR_USUARIO">Validar usuario</option>
+          <option value="CARGAR_FICHAS">Cargar fichas</option>
+          <option value="PROCESAR_RETIRO">Retirar fichas</option>
+        </select>
+        <input id="manualWorkerMontoInicio" type="number" min="0" step="1" placeholder="Monto">
+        <select id="manualWorkerBilleteraInicio"><option value="">No aplica / seleccionar billetera</option></select>
+        <input id="manualWorkerObsInicio" class="v10-hidden-obs" placeholder="Observación">
+        <button class="btn btn-green" onclick="crearWorkerJobManualInicio()">Enviar al worker</button>
+      </div>
+      <div id="manualWorkerResultadoInicio" class="v10-mini-result"></div>
+    </div>`;
+  };
+
+  // Mantiene la estructura V12, pero asegura que Acción rápida exista completa.
+  const oldEnsureShellV10 = window.ensureShellV10 || (typeof ensureShellV10 === "function" ? ensureShellV10 : null);
+  window.ensureShellV10 = function ensureShellV10(){
+    if(oldEnsureShellV10) oldEnsureShellV10();
+    const shell = document.getElementById("nodoV10Shell");
+    if(!shell) return;
+
+    let quick = shell.querySelector(".v10-quick");
+    if(!quick){
+      const mp = document.getElementById("mpPagosInicio");
+      if(mp) mp.insertAdjacentHTML("beforebegin", renderQuickActionV10());
+    }else if(!document.getElementById("manualWorkerUsuarioInicio")){
+      quick.outerHTML = renderQuickActionV10();
+    }
+  };
+
+  const oldRenderCentroV10 = window.renderCentroV10 || (typeof renderCentroV10 === "function" ? renderCentroV10 : null);
+  window.renderCentroV10 = function renderCentroV10(force=false){
+    document.body.classList.add("nodo-v10-unificado");
+    if(typeof ensureShellV10 === "function") ensureShellV10();
+
+    const scroll = document.getElementById("nodoV10Scroll");
+    const top = scroll ? scroll.scrollTop : 0;
+    const left = scroll ? scroll.scrollLeft : 0;
+
+    const k = document.getElementById("v10Kpis");
+    if(k) k.innerHTML = renderKpisV10();
+
+    const w = document.getElementById("v10Wallets");
+    if(w && typeof renderWalletsV10 === "function") w.innerHTML = renderWalletsV10();
+
+    try{ if(typeof renderPagosMpInicio === "function") renderPagosMpInicio(); }catch(e){}
+    try{ if(typeof renderWalletSelectWorkerInicio === "function") renderWalletSelectWorkerInicio(); }catch(e){}
+    try{ if(typeof renderTablaV10 === "function") renderTablaV10(force); }catch(e){ if(oldRenderCentroV10) oldRenderCentroV10(force); }
+
+    limpiarAvisosUltra();
+    if(scroll){
+      requestAnimationFrame(()=>{ scroll.scrollTop = top; scroll.scrollLeft = left; });
+    }
+  };
+
+  window.limpiarAvisosUltra = function limpiarAvisosUltra(){
+    const el = document.getElementById("manualWorkerResultadoInicio");
+    if(el && /billeteras actualicen|SQL de movimientos|movimientos persistentes/i.test(String(el.textContent||""))){
+      el.innerHTML = "";
+    }
+    document.querySelectorAll(".alert-box").forEach(box=>{
+      if(/billeteras actualicen|SQL de movimientos|movimientos persistentes/i.test(String(box.textContent||""))){
+        box.remove();
+      }
+    });
+  };
+
+  // Al cargar y luego cada pocos segundos, trae el saldo real de Agentes guardado por el worker.
+  setTimeout(()=>{ cargarSaldoAgenteUltra(); limpiarAvisosUltra(); }, 600);
+  setTimeout(()=>{ cargarSaldoAgenteUltra(); limpiarAvisosUltra(); if(typeof renderCentroV10 === "function") renderCentroV10(true); }, 1800);
+  setInterval(()=>{ cargarSaldoAgenteUltra(); limpiarAvisosUltra(); }, 9000);
+  setInterval(limpiarAvisosUltra, 900);
+})();
+</script>
+
 </body>
 </html>
