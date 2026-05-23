@@ -576,15 +576,17 @@ async function crearSolicitud(){
 }
 async function crearSolicitudSupabase(monto,tipo="CARGA"){
   const esRetiro=String(tipo||"CARGA").toUpperCase()==="RETIRO";
+  const dt=!esRetiro?datosTransferenciaActuales():{titular:null,dni:null,medio:null};
   const params={
     p_usuario:userData.usuario,p_nombre_completo:userData.nombre,p_telefono:userData.telefono,p_dni:userData.dni,p_validacion_usuario_id:Number(userData.validacion_id),p_pc_codigo:PC,p_tipo:esRetiro?"RETIRO":"CARGA",p_monto:Number(monto),p_comprobante_url:null,
     p_billetera_id:(!esRetiro&&billeteraActiva?.id)?Number(billeteraActiva.id):null,p_billetera_nombre:(!esRetiro&&billeteraActiva)?String(billeteraActiva.nombre_visible||""):null,p_link_plataforma:LINKS_PLATAFORMA[PC]||LINKS_PLATAFORMA.P1||null,
-    p_retiro_alias_cbu:esRetiro?(cuentaRetiroVerificada?.alias_cbu||$("retiroAliasCbu")?.value||"").trim():null,p_retiro_titular:esRetiro?(cuentaRetiroVerificada?.titular||$("retiroTitular")?.value||"").trim():null,p_cuenta_retiro_id:esRetiro&&cuentaRetiroVerificada?.cuenta_id?Number(cuentaRetiroVerificada.cuenta_id):null,
-    p_titular_transferencia:!esRetiro?datosTransferenciaActuales().titular:null,
-    p_dni_transferencia:!esRetiro?datosTransferenciaActuales().dni:null,
-    p_medio_transferencia:!esRetiro?datosTransferenciaActuales().medio:null
+    p_retiro_alias_cbu:esRetiro?(cuentaRetiroVerificada?.alias_cbu||$("retiroAliasCbu")?.value||"").trim():null,p_retiro_titular:esRetiro?(cuentaRetiroVerificada?.titular||$("retiroTitular")?.value||"").trim():null,p_cuenta_retiro_id:esRetiro&&cuentaRetiroVerificada?.cuenta_id?Number(cuentaRetiroVerificada.cuenta_id):null
   };
-  const {data,error}=await supabaseClient.rpc("landing_crear_solicitud_v4",params);
+
+  // V8: usamos la función estable V3 para crear la solicitud y luego guardamos
+  // los datos del titular que transfiere en una RPC separada. Así no rompemos
+  // cargas/retiros si la V4 wrapper falla o cambia la firma.
+  const {data,error}=await supabaseClient.rpc("landing_crear_solicitud_v3",params);
   if(error){
     DEBUG && console.error(error);
     const em = String(error.message || "");
@@ -594,6 +596,19 @@ async function crearSolicitudSupabase(monto,tipo="CARGA"){
     return{ok:false,error:"No se pudo crear la solicitud. Intentá nuevamente o consultanos por chat."}
   }
   const row=Array.isArray(data)?data[0]:data; if(!row?.solicitud_id)return{ok:false,error:"La solicitud no devolvió ID."}
+
+  if(!esRetiro){
+    try{
+      const {error:errDatos}=await supabaseClient.rpc("landing_guardar_datos_transferencia",{
+        p_solicitud_id:Number(row.solicitud_id),
+        p_titular_transferencia:dt.titular,
+        p_dni_transferencia:dt.dni,
+        p_medio_transferencia:dt.medio
+      });
+      if(errDatos){ DEBUG && console.warn("No se guardaron datos de transferencia:", errDatos.message || errDatos); }
+    }catch(e){ DEBUG && console.warn("No se guardaron datos de transferencia:", e); }
+  }
+
   solicitudActual=row.solicitud_id; solicitudChatId=row.chat_id||"";
   return{ok:true,solicitud:{id:row.solicitud_id,chat_id:row.chat_id,chat_token:row.chat_token||"",estado:row.estado||"PENDIENTE",created_at:row.created_at,tipo:esRetiro?"RETIRO":"CARGA",referencia_pago:row.referencia_pago||"",referencia_pago_visible:row.referencia_pago_visible||row.referencia_pago||"",retiro_requiere_revision:row.retiro_requiere_revision||false}}
 }
