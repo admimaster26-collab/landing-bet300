@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>NODO · OPERATIVO FINAL V3</title>
+<title>NODO · OPERATIVO PC4 COMPACTO V5</title>
 
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif}
@@ -6812,6 +6812,318 @@ body.nodo-compact-menu .nodo-stable-scroll{
   };
 
   ready(()=>setTimeout(()=>{ try{ window.renderOpsKpis(); }catch(e){} }, 400));
+})();
+</script>
+
+
+
+<style>
+/* =========================================================
+   NODO PANEL · V5 COMPACTO + NOTIFICACIONES TURBO
+   - Sidebar más angosto para monitor izquierdo.
+   - Estado realtime/sync reducido a puntos.
+   - Polling rápido por RPC para landing/chat/worker sin F5.
+========================================================= */
+body.nodo-v5-monitor-compact{overflow:hidden!important}
+body.nodo-v5-monitor-compact .layout{grid-template-columns:166px minmax(0,1fr)!important;height:100vh!important}
+body.nodo-v5-monitor-compact .sidebar{padding:9px!important;overflow-y:auto!important}
+body.nodo-v5-monitor-compact .sidebar .logo{width:76px!important;max-width:76px!important;margin:0 auto 8px!important}
+body.nodo-v5-monitor-compact .sidebar>.card{padding:8px!important;margin-bottom:8px!important;border-radius:13px!important}
+body.nodo-v5-monitor-compact #operadorInfo{font-size:11px!important;line-height:1.2!important}
+body.nodo-v5-monitor-compact .nodo-operator-mini{display:flex;flex-direction:column;gap:3px;align-items:flex-start}
+body.nodo-v5-monitor-compact .nodo-operator-name{font-size:13px;font-weight:900;max-width:138px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.nodo-v5-monitor-compact .nodo-operator-meta{font-size:10px;color:#cbd5e1;font-weight:800;line-height:1.2}
+body.nodo-v5-monitor-compact #smartSyncStatusChip,
+body.nodo-v5-monitor-compact #syncStatusFinalChip{display:none!important}
+body.nodo-v5-monitor-compact .nodo-live-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px}
+body.nodo-v5-monitor-compact .nodo-live-dot{width:20px;height:20px;border-radius:999px;display:inline-grid;place-items:center;font-size:10px;background:#253044;border:1px solid rgba(255,255,255,.12);position:relative}
+body.nodo-v5-monitor-compact .nodo-live-dot.ok{background:#123322;color:#b9f7cb;border-color:rgba(18,183,106,.45)}
+body.nodo-v5-monitor-compact .nodo-live-dot.warn{background:#3b2606;color:#ffd98f;border-color:rgba(253,176,34,.45)}
+body.nodo-v5-monitor-compact .nodo-live-dot.bad{background:#3a1515;color:#ffd0d0;border-color:rgba(240,68,56,.45)}
+body.nodo-v5-monitor-compact .nodo-live-dot.pulse{animation:nodoPulseDot 1.1s ease-in-out infinite}
+@keyframes nodoPulseDot{0%{box-shadow:0 0 0 0 rgba(18,183,106,.45)}70%{box-shadow:0 0 0 7px rgba(18,183,106,0)}100%{box-shadow:0 0 0 0 rgba(18,183,106,0)}}
+body.nodo-v5-monitor-compact .nav-btn{font-size:12px!important;padding:8px 9px!important;margin-bottom:6px!important;border-radius:10px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.nodo-v5-monitor-compact .badge-alert{right:7px!important;top:6px!important;min-width:19px!important;height:19px!important;font-size:10px!important}
+body.nodo-v5-monitor-compact .badge-chat{right:30px!important}
+body.nodo-v5-monitor-compact .main{padding:9px!important;overflow:auto!important}
+body.nodo-v5-monitor-compact .ops-head{margin-bottom:8px!important;gap:8px!important}
+body.nodo-v5-monitor-compact .ops-title{font-size:24px!important;line-height:1!important}
+body.nodo-v5-monitor-compact .ops-sub{display:none!important}
+body.nodo-v5-monitor-compact .ops-compact-actions .mini-btn{padding:6px 8px!important;font-size:11px!important}
+body.nodo-v5-monitor-compact .alert-box,
+body.nodo-v5-monitor-compact .err-box,
+body.nodo-v5-monitor-compact .ok-box{padding:9px!important;border-radius:11px!important;margin-bottom:8px!important;font-size:12px!important}
+body.nodo-v5-monitor-compact .ops-kpis{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:8px!important;margin-bottom:8px!important}
+body.nodo-v5-monitor-compact .ops-kpi{padding:9px!important;border-radius:12px!important}
+body.nodo-v5-monitor-compact .ops-kpi-title{font-size:9px!important;margin-bottom:4px!important}
+body.nodo-v5-monitor-compact .ops-kpi-value{font-size:19px!important;line-height:1!important}
+body.nodo-v5-monitor-compact .ops-kpi-sub{font-size:10px!important;margin-top:3px!important}
+body.nodo-v5-monitor-compact .balance-grid{gap:8px!important;margin-bottom:8px!important}
+body.nodo-v5-monitor-compact .balance-card{padding:9px!important;border-radius:12px!important}
+body.nodo-v5-monitor-compact .balance-title{font-size:9px!important;margin-bottom:4px!important}
+body.nodo-v5-monitor-compact .balance-value{font-size:20px!important}
+body.nodo-v5-monitor-compact .balance-sub{font-size:10px!important}
+body.nodo-v5-monitor-compact .ops-wallet-strip{grid-template-columns:repeat(auto-fit,minmax(168px,1fr))!important;gap:7px!important;margin-bottom:8px!important;max-height:112px!important;overflow:auto!important;padding-right:2px!important}
+body.nodo-v5-monitor-compact .ops-wallet{padding:8px!important;border-radius:12px!important}
+body.nodo-v5-monitor-compact .ops-wallet-name{font-size:12px!important;margin-bottom:3px!important}
+body.nodo-v5-monitor-compact .ops-wallet-saldo{font-size:17px!important;margin-bottom:3px!important}
+body.nodo-v5-monitor-compact .ops-wallet-meta{font-size:9.5px!important}
+body.nodo-v5-monitor-compact .ops-wallet-actions{gap:4px!important;margin-top:6px!important}
+body.nodo-v5-monitor-compact .ops-wallet-actions .mini-btn{padding:5px 7px!important;font-size:10px!important}
+body.nodo-v5-monitor-compact .ops-grid{grid-template-columns:minmax(0,1fr) 292px!important;gap:8px!important;align-items:start!important}
+body.nodo-v5-monitor-compact .ops-panel{padding:10px!important;border-radius:13px!important;margin-bottom:8px!important}
+body.nodo-v5-monitor-compact .ops-panel-title{font-size:15px!important;margin-bottom:6px!important}
+body.nodo-v5-monitor-compact .small{font-size:10.5px!important;line-height:1.25!important}
+body.nodo-v5-monitor-compact .filters{gap:6px!important;margin-bottom:8px!important}
+body.nodo-v5-monitor-compact input,
+body.nodo-v5-monitor-compact select,
+body.nodo-v5-monitor-compact textarea{font-size:12px!important;padding:8px!important;border-radius:8px!important;margin-top:4px!important;margin-bottom:7px!important}
+body.nodo-v5-monitor-compact label{font-size:11px!important;margin-bottom:2px!important}
+body.nodo-v5-monitor-compact .btn{padding:9px!important;border-radius:9px!important;font-size:12px!important}
+body.nodo-v5-monitor-compact .mini-btn{padding:6px 8px!important;border-radius:8px!important;font-size:10.5px!important}
+body.nodo-v5-monitor-compact th,
+body.nodo-v5-monitor-compact td{font-size:10.5px!important;padding:6px!important}
+body.nodo-v5-monitor-compact .ops-main-table td,
+body.nodo-v5-monitor-compact .ops-main-table th{font-size:10.5px!important;padding:6px!important}
+body.nodo-v5-monitor-compact .ops-table-wrap{max-height:calc(100vh - 315px)!important}
+body.nodo-v5-monitor-compact .table-wrap{max-height:calc(100vh - 230px)!important}
+body.nodo-v5-monitor-compact .worker-result-card.compact{max-height:96px!important;min-width:160px!important;padding:7px!important;border-radius:10px!important}
+body.nodo-v5-monitor-compact .worker-result-card pre{font-size:10.5px!important;line-height:1.25!important}
+body.nodo-v5-monitor-compact .worker-result-title{font-size:11px!important;margin-bottom:4px!important}
+body.nodo-v5-monitor-compact .worker-error-card{font-size:10.5px!important;max-height:90px!important;overflow:auto!important;padding:7px!important}
+body.nodo-v5-monitor-compact #opsFiltroTexto{width:170px!important}
+body.nodo-v5-monitor-compact .ops-manual-grid{gap:5px!important}
+body.nodo-v5-monitor-compact .toast{font-size:13px!important;padding:10px 12px!important;border-radius:11px!important;right:10px!important;top:10px!important;max-width:330px!important}
+@media(max-width:980px){
+  body.nodo-v5-monitor-compact .layout{grid-template-columns:72px minmax(0,1fr)!important}
+  body.nodo-v5-monitor-compact .sidebar{padding:7px!important}
+  body.nodo-v5-monitor-compact .sidebar>.card{display:none!important}
+  body.nodo-v5-monitor-compact .sidebar .logo{width:46px!important;max-width:46px!important}
+  body.nodo-v5-monitor-compact .nav-btn{font-size:0!important;text-align:center!important;padding:10px 4px!important;min-height:38px!important}
+  body.nodo-v5-monitor-compact .nav-btn::first-letter{font-size:16px!important}
+  body.nodo-v5-monitor-compact .badge-alert{right:2px!important;top:3px!important}
+  body.nodo-v5-monitor-compact .ops-grid{grid-template-columns:1fr!important}
+}
+@media(max-width:860px){
+  body.nodo-v5-monitor-compact .ops-grid{grid-template-columns:1fr!important}
+}
+</style>
+
+<script>
+/* =========================================================
+   NODO PANEL · V5 NOTIFICADOR SIN F5
+   Usa las funciones/RPC existentes del panel. No toca tablas nuevas.
+========================================================= */
+(function(){
+  if(window.__NODO_PANEL_COMPACT_NOTIFY_V5__) return;
+  window.__NODO_PANEL_COMPACT_NOTIFY_V5__ = true;
+
+  const ST = {
+    boot:true,
+    running:false,
+    last:{sol:null,chat:null,worker:null},
+    lastNotifyAt:0,
+    audioUnlocked:false,
+    timer:null
+  };
+
+  function ready(fn){
+    if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
+    else fn();
+  }
+  function norm(v){
+    try{ if(typeof normalizar === 'function') return normalizar(v); }catch(e){}
+    return String(v||'').trim().toUpperCase();
+  }
+  function esc(v){
+    try{ if(typeof escapeHtml === 'function') return escapeHtml(v); }catch(e){}
+    return String(v??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+  }
+  function isSessionReady(){
+    try{return !!(panelSessionToken && pcOperativa);}catch(e){return false;}
+  }
+  function isUserEditing(){
+    const a = document.activeElement;
+    if(!a) return false;
+    const tag = String(a.tagName || '').toUpperCase();
+    if(!['INPUT','TEXTAREA','SELECT'].includes(tag)) return false;
+    if(a.readOnly || a.disabled) return false;
+    return true;
+  }
+  function pendingSolicitudesCount(){
+    try{
+      const arr = Array.isArray(solicitudes) ? solicitudes : [];
+      return arr.filter(s => typeof esPendiente === 'function' ? esPendiente(s) : ['PENDIENTE','NUEVA','NUEVO','EN_REVISION'].includes(norm(s.ESTADO || s.estado))).length;
+    }catch(e){return 0;}
+  }
+  function chatUnreadCount(){
+    try{
+      const badge = document.getElementById('badgeChat');
+      const n = Number(badge && !badge.classList.contains('hidden') ? badge.textContent : NaN);
+      if(Number.isFinite(n)) return n;
+    }catch(e){}
+    try{
+      const arr = Array.isArray(chats) ? chats : [];
+      return arr.reduce((a,c)=>a+Number(c.SIN_LEER || c.sin_leer || 0),0);
+    }catch(e){return 0;}
+  }
+  function workerAlertCount(){
+    try{
+      const arr = Array.isArray(workerJobs) ? workerJobs : [];
+      return arr.filter(j => ['PENDIENTE','PROCESANDO','REINTENTAR','ERROR','ERROR_JOB','REQUIERE_MANUAL'].includes(norm(j.estado || j.ESTADO))).length;
+    }catch(e){return 0;}
+  }
+  function updateBadges(){
+    const sol = pendingSolicitudesCount();
+    const chat = chatUnreadCount();
+    const worker = workerAlertCount();
+    const bSol = document.getElementById('badgeSolicitudes');
+    if(bSol){ bSol.textContent = sol; bSol.classList.toggle('hidden', sol <= 0); }
+    const bChat = document.getElementById('badgeChat');
+    if(bChat){ bChat.textContent = chat; bChat.classList.toggle('hidden', chat <= 0); }
+    const bWorker = document.getElementById('badgeWorker');
+    if(bWorker){ bWorker.textContent = worker; bWorker.classList.toggle('hidden', worker <= 0); }
+    setDot('sol', sol>0 ? 'warn' : 'ok');
+    setDot('chat', chat>0 ? 'warn' : 'ok');
+    setDot('work', worker>0 ? 'warn' : 'ok');
+    return {sol, chat, worker};
+  }
+  function setDot(kind, mode){
+    const el = document.querySelector(`[data-nodo-dot="${kind}"]`);
+    if(!el) return;
+    el.classList.remove('ok','warn','bad','pulse');
+    el.classList.add(mode || 'ok');
+    if(mode === 'warn') el.classList.add('pulse');
+  }
+  function sound(){
+    if(!ST.audioUnlocked) return;
+    try{
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if(!AC) return;
+      const ctx = new AC();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.value = 880;
+      g.gain.value = 0.035;
+      o.connect(g); g.connect(ctx.destination);
+      o.start();
+      setTimeout(()=>{ try{o.stop(); ctx.close();}catch(e){} }, 120);
+    }catch(e){}
+  }
+  function notify(text, type='blue'){
+    const now = Date.now();
+    if(now - ST.lastNotifyAt < 900) return;
+    ST.lastNotifyAt = now;
+    try{ if(typeof toast === 'function') toast(text, type); }catch(e){}
+    try{ sound(); }catch(e){}
+    try{ if(navigator.vibrate) navigator.vibrate([80,40,80]); }catch(e){}
+  }
+  function detectNews(){
+    const cur = updateBadges();
+    if(ST.last.sol !== null){
+      if(cur.sol > ST.last.sol) notify(`🔔 Nueva solicitud de landing (${cur.sol} pendiente/s)`, 'blue');
+      if(cur.chat > ST.last.chat) notify(`💬 Nuevo mensaje de chat (${cur.chat} sin leer)`, 'blue');
+      if(cur.worker > ST.last.worker) notify(`⚙️ Worker requiere atención (${cur.worker})`, 'blue');
+    }
+    ST.last = cur;
+    return cur;
+  }
+  function compactOperatorInfo(){
+    const info = document.getElementById('operadorInfo');
+    if(!info) return;
+    let nombre='Operador', rol='-', tipo='-', pc='-';
+    try{ nombre = operador?.nombre || operador?.NOMBRE || operador?.usuario || operador?.USUARIO || 'Operador'; }catch(e){}
+    try{ rol = operador?.rol || operador?.ROL || 'OPERADOR'; }catch(e){}
+    try{ tipo = operador?.tipoOperador || operador?.tipo || operador?.TIPO || '-'; }catch(e){}
+    try{ pc = pcOperativa || operador?.pc || operador?.PC || '-'; }catch(e){}
+    info.innerHTML = `
+      <div class="nodo-operator-mini">
+        <div class="nodo-operator-name">${esc(nombre)}</div>
+        <div class="nodo-operator-meta">${esc(rol)} · ${esc(tipo)} · ${esc(pc)}</div>
+        <div class="nodo-live-row" title="Estado rápido: solicitudes · chat · worker">
+          <span class="nodo-live-dot ok" data-nodo-dot="sol" title="Landing">L</span>
+          <span class="nodo-live-dot ok" data-nodo-dot="chat" title="Chat">C</span>
+          <span class="nodo-live-dot ok" data-nodo-dot="work" title="Worker">W</span>
+        </div>
+      </div>
+    `;
+    updateBadges();
+  }
+
+  async function pulseFast(reason='timer'){
+    if(ST.running || !isSessionReady()) return;
+    ST.running = true;
+    try{
+      setDot('sol','ok'); setDot('chat','ok'); setDot('work','ok');
+      if(isUserEditing()){
+        updateBadges();
+        return;
+      }
+      const tasks = [];
+      if(typeof cargarSolicitudes === 'function') tasks.push(cargarSolicitudes(true));
+      if(typeof cargarChats === 'function') tasks.push(cargarChats(true));
+      if(typeof cargarWorkerJobs === 'function') tasks.push(cargarWorkerJobs(false));
+      await Promise.allSettled(tasks);
+      detectNews();
+      try{ if(typeof renderCentroOperativo === 'function') renderCentroOperativo(); }catch(e){}
+    }catch(e){
+      setDot('sol','bad'); setDot('chat','bad'); setDot('work','bad');
+      console.warn('NODO notify pulse', reason, e);
+    }finally{
+      ST.running = false;
+    }
+  }
+
+  function installWrappers(){
+    ['cargarSolicitudes','cargarChats','cargarWorkerJobs'].forEach(name=>{
+      const old = window[name];
+      if(typeof old !== 'function' || old.__nodoNotifyWrapped) return;
+      const wrapped = async function(...args){
+        const r = await old.apply(this,args);
+        setTimeout(detectNews, 40);
+        return r;
+      };
+      wrapped.__nodoNotifyWrapped = true;
+      window[name] = wrapped;
+    });
+    ['crearWorkerJobManualInicio','crearWorkerJobManualDesdePanel','tomarSolicitud','aprobarCarga','aprobarRetiro'].forEach(name=>{
+      const old = window[name];
+      if(typeof old !== 'function' || old.__nodoAfterWrapped) return;
+      const wrapped = async function(...args){
+        const r = await old.apply(this,args);
+        setTimeout(()=>pulseFast(name + ':300'), 300);
+        setTimeout(()=>pulseFast(name + ':1500'), 1500);
+        return r;
+      };
+      wrapped.__nodoAfterWrapped = true;
+      window[name] = wrapped;
+    });
+  }
+
+  ready(()=>{
+    document.body.classList.add('nodo-v5-monitor-compact');
+    document.addEventListener('click',()=>{ST.audioUnlocked=true;},{once:true});
+    document.addEventListener('keydown',()=>{ST.audioUnlocked=true;},{once:true});
+    setTimeout(compactOperatorInfo, 500);
+    setTimeout(compactOperatorInfo, 1600);
+    setTimeout(()=>{ installWrappers(); detectNews(); pulseFast('boot'); }, 1800);
+    if(!ST.timer){
+      ST.timer = setInterval(()=>pulseFast('fast-timer'), 1350);
+    }
+  });
+
+  const oldFinalizar = window.finalizarLogin;
+  if(typeof oldFinalizar === 'function' && !oldFinalizar.__nodoCompactWrapped){
+    const wrapped = function(...args){
+      const r = oldFinalizar.apply(this,args);
+      setTimeout(compactOperatorInfo, 150);
+      setTimeout(()=>pulseFast('login'), 900);
+      return r;
+    };
+    wrapped.__nodoCompactWrapped = true;
+    window.finalizarLogin = wrapped;
+  }
 })();
 </script>
 
