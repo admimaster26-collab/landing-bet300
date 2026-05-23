@@ -51,6 +51,9 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .chat-lite.hidden{display:none!important}.chat-lite{position:fixed;right:18px;bottom:86px;width:min(390px,calc(100vw - 28px));height:min(590px,calc(100vh - 118px));z-index:9999;border-radius:24px;overflow:hidden;background:#101722;border:1px solid rgba(255,255,255,.14);box-shadow:0 22px 70px rgba(0,0,0,.45);display:flex;flex-direction:column}.chat-lite-head{padding:15px 16px;background:linear-gradient(135deg,#153b31,#111827);border-bottom:1px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:space-between;gap:12px}.chat-agent{display:flex;align-items:center;gap:10px}.chat-avatar{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#d4af37;color:#07131f;font-weight:900}.chat-title{font-weight:900;font-size:16px}.chat-status{color:#9ee6bd;font-size:12px;margin-top:2px}.chat-close{background:rgba(255,255,255,.1);color:#fff;box-shadow:none;width:38px;height:38px;padding:0;margin:0;border-radius:12px;font-size:20px}.chat-lite-body{flex:1;overflow-y:auto;padding:14px;background:#0b111a}.chat-day{width:max-content;max-width:88%;margin:0 auto 12px;padding:7px 10px;border-radius:999px;background:rgba(255,255,255,.08);color:#cbd5e1;font-size:12px}.chat-msg{max-width:84%;margin-bottom:10px;display:flex;flex-direction:column}.chat-msg.user{margin-left:auto;align-items:flex-end}.chat-msg.operator{margin-right:auto;align-items:flex-start}.chat-bubble{padding:10px 12px;border-radius:16px;line-height:1.35;font-size:15px;word-break:break-word}.chat-msg.user .chat-bubble{background:linear-gradient(135deg,#d4af37,#f7d774);color:#07131f;border-bottom-right-radius:4px}.chat-msg.operator .chat-bubble{background:#1d2939;color:#f4f7fb;border-bottom-left-radius:4px}.chat-bubble img{width:100%;max-width:240px;border-radius:12px;display:block;margin-top:6px}.chat-meta{color:#94a3b8;font-size:11px;margin-top:4px;padding:0 4px}.chat-lite-compose{padding:12px;background:#101722;border-top:1px solid rgba(255,255,255,.1)}.chat-input-row{display:grid;grid-template-columns:42px 1fr 46px;gap:8px;align-items:end}.chat-file-btn,.chat-send-btn{width:42px;height:42px;min-width:42px;padding:0;margin:0;border-radius:14px;color:#fff;box-shadow:none}.chat-file-btn{background:rgba(255,255,255,.12)}.chat-send-btn{background:linear-gradient(135deg,#d4af37,#f7d774);color:#07131f}#chatLiteInput{min-height:42px;max-height:110px;margin:0;padding:11px 12px;resize:none;border-radius:14px;font-size:15px;background:#090c13;color:#fff;border:1px solid rgba(255,255,255,.14)}.chat-hint{color:#94a3b8;font-size:11px;margin-top:8px;text-align:center}.chat-preview{display:none;align-items:center;justify-content:space-between;gap:10px;padding:8px;border-radius:14px;background:rgba(255,255,255,.08);margin-bottom:10px}.chat-preview.show{display:flex}.chat-preview img{width:58px;height:58px;object-fit:cover;border-radius:12px}.chat-preview button{width:auto;min-width:34px;height:34px;padding:0;margin:0;background:rgba(239,68,68,.18);color:#fff;box-shadow:none}
 .success-modal.hidden{display:none!important}.success-modal{position:fixed;inset:0;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px}.success-box{width:100%;max-width:420px;background:linear-gradient(145deg,#0c2d24,#111827);border:1px solid rgba(38,255,169,.3);border-radius:28px;padding:34px 24px;text-align:center;position:relative}.close-modal{width:auto;position:absolute;right:16px;top:12px;background:transparent;color:white;box-shadow:none;font-size:28px;padding:0;margin:0}.success-icon{font-size:62px;margin-bottom:12px}
 @media(max-width:520px){.wrap{padding:18px 14px 120px}.logo-img{width:245px;margin-bottom:14px}h1{font-size:34px}.sub,.muted{font-size:17px}.card{padding:18px;border-radius:22px}.big-data{font-size:22px}.chat-lite-btn{right:14px;bottom:14px;min-width:0;width:calc(100vw - 28px)}.chat-lite{right:0;bottom:0;width:100vw;height:100vh;max-height:none;border-radius:0;border:none}}
+
+.transfer-data-box{background:rgba(255,255,255,.055);border:1px solid rgba(212,175,55,.24);border-radius:18px;padding:14px;margin:14px 0}.transfer-data-title{font-weight:900;color:#f7d774;margin-bottom:6px}.transfer-data-help{font-size:13px;color:#cbd5e1;line-height:1.35;margin-bottom:10px}.transfer-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.transfer-grid .full{grid-column:1/-1}@media(max-width:520px){.transfer-grid{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
@@ -109,6 +112,33 @@ button:disabled{opacity:.45;cursor:not-allowed}
 
     <label id="montoLabel">Monto a cargar *</label>
     <input id="monto" type="number" placeholder="ej: 5000">
+
+    <div id="datosTransferenciaBox" class="transfer-data-box">
+      <div class="transfer-data-title">Datos de quien transfiere</div>
+      <div class="transfer-data-help">Completá estos datos para que podamos detectar tu pago más rápido. Puede ser tu cuenta o la cuenta de otra persona que te transfiera.</div>
+      <div class="transfer-grid">
+        <div class="full">
+          <label>Nombre del titular que transfiere *</label>
+          <input id="titularTransferencia" placeholder="Ej: María López">
+        </div>
+        <div>
+          <label>DNI / CUIT del titular *</label>
+          <input id="dniTransferencia" inputmode="numeric" placeholder="Ej: 30111222">
+        </div>
+        <div>
+          <label>Medio desde donde transfiere *</label>
+          <select id="medioTransferencia">
+            <option value="">Seleccionar</option>
+            <option value="MERCADO_PAGO">Mercado Pago</option>
+            <option value="BANCO">Banco</option>
+            <option value="UALA">Ualá</option>
+            <option value="PERSONAL_PAY">Personal Pay</option>
+            <option value="NX">NX</option>
+            <option value="OTRO">Otro</option>
+          </select>
+        </div>
+      </div>
+    </div>
 
     <div id="retiroDatosBox" class="retiro-data-box hidden">
       <div class="hint">Para retiros, se usará la cuenta registrada/verificada. Si es la primera vez, completala y un operador la revisa antes de aprobar.</div>
@@ -431,7 +461,7 @@ async function validarUsuarioConDatosFinales(usuario,nombre,telefono,dni){
   };
 }
 
-function mostrarCarga(){
+function mostrarCarga(){setTimeout(actualizarCamposPorTipoSolicitud,0);
   setVista("cargaCard");
   $("datosUsuarioBox").innerHTML=`<b>Usuario:</b> ${escapeHtml(userData.usuario)}<br><b>Nombre:</b> ${escapeHtml(userData.nombre)}<br><b>WhatsApp:</b> ${escapeHtml(userData.telefono)}<br><b>DNI:</b> ${escapeHtml(userData.dni)}<br><b>Validación:</b> Usuario encontrado en Agentes ✅`;
   if(!billeteraActiva){ cargarBilletera(); }
@@ -470,7 +500,7 @@ function seleccionarTipoSolicitud(tipo){
   $("tipoCargaBtn").classList.toggle("active",!esRetiro);$("tipoRetiroBtn").classList.toggle("active",esRetiro);
   $("montoLabel").innerText=esRetiro?"Monto a retirar *":"Monto a cargar *";$("monto").placeholder=esRetiro?"mínimo: 5000":"ej: 5000";$("btnEnviar").innerText=esRetiro?"Enviar solicitud de retiro":"Enviar solicitud";
   $("retiroDatosBox").classList.toggle("hidden",!esRetiro);$("montoMinimoTxt").innerText=esRetiro?"⚠️ Retiro mínimo: $5.000":"⚠️ Carga mínima: $2.000";
-  if(esRetiro)cargarCuentaRetiroVerificada();else{cuentaRetiroVerificada=null;actualizarVistaCuentaRetiro()}
+  if(esRetiro)cargarCuentaRetiroVerificada();else{cuentaRetiroVerificada=null;actualizarVistaCuentaRetiro();actualizarCamposPorTipoSolicitud()}
 }
 
 async function cargarCuentaRetiroVerificada(){
@@ -497,6 +527,23 @@ async function puedeSolicitarRetiro(){
   return{ok:true}
 }
 
+
+function datosTransferenciaActuales(){
+  const titular = ($("titularTransferencia")?.value || "").trim().replace(/\s+/g," ");
+  const dni = normalizarDni($("dniTransferencia")?.value || "");
+  const medio = ($("medioTransferencia")?.value || "").trim().toUpperCase();
+  return { titular, dni, medio };
+}
+function limpiarDatosTransferencia(){
+  if($("titularTransferencia")) $("titularTransferencia").value="";
+  if($("dniTransferencia")) $("dniTransferencia").value="";
+  if($("medioTransferencia")) $("medioTransferencia").value="";
+}
+function actualizarCamposPorTipoSolicitud(){
+  const esRetiro = String(tipoSolicitudActual||"CARGA").toUpperCase()==="RETIRO";
+  $("datosTransferenciaBox")?.classList.toggle("hidden", esRetiro);
+}
+
 async function crearSolicitud(){
   const monto=Number($("monto").value||0), tipo=String(tipoSolicitudActual||"CARGA").toUpperCase(), esRetiro=tipo==="RETIRO";
   if(!userData?.usuario||!userData?.validacion_id){mostrarResultado("Primero verificá tu usuario en Agentes.",false);setVista("loginCard");return}
@@ -507,6 +554,12 @@ async function crearSolicitud(){
     const destino=($("retiroAliasCbu")?.value||"").trim(), titular=($("retiroTitular")?.value||"").trim();
     if(!destino||!titular){mostrarResultado("Completá la cuenta de destino y titular para el retiro.",false);return}
     const v=await puedeSolicitarRetiro(); if(!v.ok){mostrarResultado(v.error,false);return}
+  }
+  if(!esRetiro){
+    const dt=datosTransferenciaActuales();
+    if(!dt.titular||dt.titular.length<4){mostrarResultado("Completá el nombre del titular que transfiere.",false);return}
+    if(!dt.dni||dt.dni.length<7){mostrarResultado("Completá el DNI/CUIT del titular que transfiere.",false);return}
+    if(!dt.medio){mostrarResultado("Seleccioná desde qué medio/billetera se realiza la transferencia.",false);return}
   }
   if(!esRetiro&&!billeteraActiva){mostrarResultado("No hay billetera disponible. Contactanos por chat.",false);return}
   if(bloquearSiSolicitudReciente()) return;
@@ -519,16 +572,19 @@ async function crearSolicitud(){
   if(r.solicitud.chat_id&&r.solicitud.chat_token){chatSessionId=String(r.solicitud.chat_id);chatSessionToken=String(r.solicitud.chat_token);sessionStorage.setItem(LS_CHAT,chatSessionId);sessionStorage.setItem(LS_CHAT_TOKEN,chatSessionToken);iniciarRealtimeChatLanding()}
   referenciaPagoActual=r.solicitud.referencia_pago||"";mostrarReferenciaPago(r.solicitud);
   mostrarResultado(`✅ Solicitud enviada correctamente.<br><br><b>ID:</b> ${r.solicitud.id}<br><b>Tipo:</b> ${tipo}<br>${(!esRetiro&&referenciaPagoActual)?`<b>Referencia:</b> ${referenciaPagoActual}<br>`:""}<b>Estado:</b> ${r.solicitud.estado}<br><br>${esRetiro?"Estamos revisando tu retiro.":"Estamos verificando tu transferencia."}`,true);
-  mostrarEstadoEspera(r.solicitud.estado||"PENDIENTE");iniciarEscuchaEstado();$("monto").value="";
+  mostrarEstadoEspera(r.solicitud.estado||"PENDIENTE");iniciarEscuchaEstado();$("monto").value="";if(!esRetiro)limpiarDatosTransferencia();
 }
 async function crearSolicitudSupabase(monto,tipo="CARGA"){
   const esRetiro=String(tipo||"CARGA").toUpperCase()==="RETIRO";
   const params={
     p_usuario:userData.usuario,p_nombre_completo:userData.nombre,p_telefono:userData.telefono,p_dni:userData.dni,p_validacion_usuario_id:Number(userData.validacion_id),p_pc_codigo:PC,p_tipo:esRetiro?"RETIRO":"CARGA",p_monto:Number(monto),p_comprobante_url:null,
     p_billetera_id:(!esRetiro&&billeteraActiva?.id)?Number(billeteraActiva.id):null,p_billetera_nombre:(!esRetiro&&billeteraActiva)?String(billeteraActiva.nombre_visible||""):null,p_link_plataforma:LINKS_PLATAFORMA[PC]||LINKS_PLATAFORMA.P1||null,
-    p_retiro_alias_cbu:esRetiro?(cuentaRetiroVerificada?.alias_cbu||$("retiroAliasCbu")?.value||"").trim():null,p_retiro_titular:esRetiro?(cuentaRetiroVerificada?.titular||$("retiroTitular")?.value||"").trim():null,p_cuenta_retiro_id:esRetiro&&cuentaRetiroVerificada?.cuenta_id?Number(cuentaRetiroVerificada.cuenta_id):null
+    p_retiro_alias_cbu:esRetiro?(cuentaRetiroVerificada?.alias_cbu||$("retiroAliasCbu")?.value||"").trim():null,p_retiro_titular:esRetiro?(cuentaRetiroVerificada?.titular||$("retiroTitular")?.value||"").trim():null,p_cuenta_retiro_id:esRetiro&&cuentaRetiroVerificada?.cuenta_id?Number(cuentaRetiroVerificada.cuenta_id):null,
+    p_titular_transferencia:!esRetiro?datosTransferenciaActuales().titular:null,
+    p_dni_transferencia:!esRetiro?datosTransferenciaActuales().dni:null,
+    p_medio_transferencia:!esRetiro?datosTransferenciaActuales().medio:null
   };
-  const {data,error}=await supabaseClient.rpc("landing_crear_solicitud_v3",params);
+  const {data,error}=await supabaseClient.rpc("landing_crear_solicitud_v4",params);
   if(error){
     DEBUG && console.error(error);
     const em = String(error.message || "");
