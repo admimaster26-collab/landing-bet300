@@ -1558,7 +1558,11 @@ async function cargarSaldosOperativos(silencioso=true){
   }
 
   saldosOperativos = Array.isArray(data) ? data[0] : data;
+  window.saldosOperativos = saldosOperativos;
   renderSaldosOperativos();
+  try { if (typeof renderOpsWallets === "function") renderOpsWallets(); } catch(e) {}
+  try { if (typeof renderBilleteras === "function") renderBilleteras(); } catch(e) {}
+  try { if (typeof renderSelectsAjustes === "function") renderSelectsAjustes(); } catch(e) {}
 }
 
 function renderSaldosOperativos(){
@@ -6318,7 +6322,9 @@ body.nodo-ux-safe .ops-main-table td,body.nodo-ux-safe .ops-main-table th{font-s
     const b = Array.isArray(window.billeterasTodas) ? window.billeterasTodas : (typeof billeterasTodas !== 'undefined' ? billeterasTodas : []);
     const c = (window.saldosOperativos && Array.isArray(window.saldosOperativos.billeteras)) ? window.saldosOperativos.billeteras : ((typeof saldosOperativos !== 'undefined' && saldosOperativos && Array.isArray(saldosOperativos.billeteras)) ? saldosOperativos.billeteras : []);
     const pc = normalizarPc(window.pcOperativa || (typeof pcOperativa !== 'undefined' ? pcOperativa : ''));
-    const all = (a.length ? a : b.length ? b : c).map(normWallet).filter(w => !pc || !w.pc || w.pc === pc);
+    // V8: la fuente principal para saldos debe ser saldosOperativos.billeteras.
+    // billeteras/billeterasTodas traen datos base y pueden venir con saldo 0.
+    const all = (c.length ? c : a.length ? a : b).map(normWallet).filter(w => !pc || !w.pc || w.pc === pc);
     const seen = new Set();
     return all.filter(w => { const k = w.id || (w.nombre+'|'+w.alias); if(seen.has(k)) return false; seen.add(k); return true; });
   }
@@ -6393,7 +6399,8 @@ body.nodo-ux-safe .ops-main-table td,body.nodo-ux-safe .ops-main-table th{font-s
     ['ajusteBilleteraId','transferBilleteraOrigen','transferBilleteraDestino'].forEach(id=>renderWalletOptions(id,'Seleccionar billetera'));
   };
   window.renderOpsWallets = renderOpsWallets = function(){
-    const list = ((window.saldosOperativos && Array.isArray(window.saldosOperativos.billeteras) && window.saldosOperativos.billeteras.length) ? window.saldosOperativos.billeteras.map(normWallet) : listaWalletsBase());
+    const so = window.saldosOperativos || (typeof saldosOperativos !== 'undefined' ? saldosOperativos : null);
+    const list = ((so && Array.isArray(so.billeteras) && so.billeteras.length) ? so.billeteras.map(normWallet) : listaWalletsBase());
     if(!list.length){ setBox('opsWalletStrip', `<div class="ops-wallet"><div class="ops-wallet-name">Billeteras</div><div class="ops-wallet-meta">Sin billeteras visibles para esta PC.</div></div>`); return; }
     setBox('opsWalletStrip', list.map(b=>`<div class="ops-wallet"><div class="ops-wallet-name">${esc(b.nombre||'Billetera')}</div><div class="ops-wallet-saldo">${moneySafe(b.saldo||0)}</div><div class="ops-wallet-meta">${esc(b.banco||'')} · ${esc(b.titular||'')}<br>Alias: ${esc(b.alias||'-')}</div><div class="ops-wallet-actions"><button class="mini-btn gray" onclick="copiarTextoOperativo('${attr(b.alias||'')}','Alias')">Alias</button><button class="mini-btn gray" onclick="copiarTextoOperativo('${attr(b.cbu||'')}','CBU/CVU')">CBU</button><button class="mini-btn yellow" onclick="abrirAjusteBilletera('${attr(b.id)}')">Ajustar</button></div></div>`).join(''));
   };
@@ -7492,6 +7499,164 @@ body.nodo-v6-monitor-left .toast{top:8px!important;right:8px!important;max-width
       }
     }
   }, 1800);
+})();
+</script>
+
+
+
+<script>
+/* =========================================================
+   NODO PC4 · V8 FIX SALDOS BILLETERAS
+   - La RPC ya devuelve saldos correctos.
+   - Este parche fuerza al panel a usar saldosOperativos.billeteras
+     como fuente principal para tarjetas, selects y billeteras.
+========================================================= */
+(function(){
+  if(window.__NODO_PC4_FIX_SALDOS_BILLETERAS_V8__) return;
+  window.__NODO_PC4_FIX_SALDOS_BILLETERAS_V8__ = true;
+
+  function esc(v){
+    if(typeof escapeHtml === 'function') return escapeHtml(v);
+    return String(v??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+  }
+  function attr(v){
+    if(typeof escapeAttr === 'function') return escapeAttr(v);
+    return esc(v);
+  }
+  function pesos(v){
+    if(typeof money === 'function') return money(v);
+    return Number(v||0).toLocaleString('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0});
+  }
+  function norm(v){return String(v||'').trim().toUpperCase();}
+  function pcNorm(v){
+    let x = norm(v).replace(/\s+|-|_/g,'');
+    if(/^PC\d+$/.test(x)) return 'P'+x.replace('PC','');
+    return x;
+  }
+  function pick(o,names,def=''){
+    for(const n of names){
+      if(o && o[n] !== undefined && o[n] !== null && String(o[n]).trim() !== '') return o[n];
+    }
+    return def;
+  }
+  function saldoData(){
+    return window.saldosOperativos || (typeof saldosOperativos !== 'undefined' ? saldosOperativos : null) || null;
+  }
+  function walletFromSaldo(w){
+    const id = String(pick(w,['id','billetera_id','ID_BILLETERA','ID'],''));
+    return {
+      _raw:w,
+      id,
+      ID_BILLETERA:id,
+      nombre: String(pick(w,['nombre_visible','nombre','NOMBRE_VISIBLE','BILLETERA_NOMBRE','titular'],'Billetera')),
+      banco: String(pick(w,['banco','tipo','TIPO','BANCO'],'')),
+      titular: String(pick(w,['titular','TITULAR'],'')),
+      alias: String(pick(w,['alias','ALIAS'],'')),
+      cbu: String(pick(w,['cbu','CBU','CVU_CBU','cvu'],'')),
+      pc: pcNorm(pick(w,['pc_codigo','PC','PC_CODIGO'], window.pcOperativa || (typeof pcOperativa !== 'undefined' ? pcOperativa : ''))),
+      activa: pick(w,['activa','ACTIVA'],true) !== false && norm(pick(w,['estado','ESTADO'], 'ACTIVA')) !== 'NO',
+      manual: pick(w,['seleccionada_manual','SELECCIONADA_MANUAL'],false) === true,
+      saldo: Number(pick(w,['saldo','SALDO','saldo_actual'],0) || 0)
+    };
+  }
+  function walletsSaldosPrimero(){
+    const so = saldoData();
+    const pc = pcNorm(window.pcOperativa || (typeof pcOperativa !== 'undefined' ? pcOperativa : ''));
+    let list = [];
+    if(so && Array.isArray(so.billeteras) && so.billeteras.length){
+      list = so.billeteras.map(walletFromSaldo);
+    }else if(typeof nodoGetWalletsRobustas === 'function'){
+      list = nodoGetWalletsRobustas();
+    }else{
+      const a = Array.isArray(window.billeteras) ? window.billeteras : (typeof billeteras !== 'undefined' ? billeteras : []);
+      const b = Array.isArray(window.billeterasTodas) ? window.billeterasTodas : (typeof billeterasTodas !== 'undefined' ? billeterasTodas : []);
+      list = (a.length ? a : b).map(walletFromSaldo);
+    }
+    return list.filter(w => !pc || !w.pc || w.pc === pc);
+  }
+
+  window.nodoWalletsSaldosPrimero = walletsSaldosPrimero;
+  window.nodoGetWalletsRobustas = walletsSaldosPrimero;
+
+  window.renderOpsWallets = function(){
+    const list = walletsSaldosPrimero();
+    if(!list.length){
+      const el=document.getElementById('opsWalletStrip');
+      if(el) el.innerHTML = '<div class="ops-wallet"><div class="ops-wallet-name">Billeteras</div><div class="ops-wallet-meta">Sin billeteras visibles para esta PC.</div></div>';
+      return;
+    }
+    const html = list.map(b=>`<div class="ops-wallet">
+      <div class="ops-wallet-name">${esc(b.nombre || 'Billetera')}</div>
+      <div class="ops-wallet-saldo">${pesos(b.saldo || 0)}</div>
+      <div class="ops-wallet-meta">${esc(b.banco || '')} · ${esc(b.titular || '')}<br>Alias: ${esc(b.alias || '-')}</div>
+      <div class="ops-wallet-actions">
+        <button class="mini-btn gray" onclick="copiarTextoOperativo('${attr(b.alias||'')}','Alias')">Alias</button>
+        <button class="mini-btn gray" onclick="copiarTextoOperativo('${attr(b.cbu||'')}','CBU/CVU')">CBU</button>
+        <button class="mini-btn yellow" onclick="abrirAjusteBilletera('${attr(b.id)}')">Ajustar</button>
+      </div>
+    </div>`).join('');
+    const el=document.getElementById('opsWalletStrip');
+    if(el) el.innerHTML = html;
+  };
+
+  window.renderBilleteras = function(){
+    const list = walletsSaldosPrimero();
+    const el=document.getElementById('walletsGrid');
+    if(!el) return;
+    if(!list.length){
+      el.innerHTML='<div class="alert-box">No hay billeteras visibles para esta PC.</div>';
+      return;
+    }
+    el.innerHTML = list.map(b=>`<div class="wallet-card ${b.activa?'ok':'paused'} ${b.manual?'selected':''}">
+      <div class="wallet-name">💳 ${esc(b.nombre || b.id || 'Billetera')}</div>
+      <div class="wallet-type">${esc(b.banco || '')} · ${esc(b.pc || '')}</div>
+      <div style="margin-top:8px;font-size:22px;font-weight:900;color:#b9f7cb">${pesos(b.saldo||0)}</div>
+      <div class="small" style="margin-top:8px;line-height:1.45">
+        Titular: <b>${esc(b.titular || '-')}</b><br>
+        Alias: <b>${esc(b.alias || '-')}</b><br>
+        CBU/CVU: <b>${esc(b.cbu || '-')}</b>
+      </div>
+    </div>`).join('');
+  };
+
+  function renderWalletOptionsV8(selectId, blank){
+    const sel=document.getElementById(selectId);
+    if(!sel) return;
+    const old=sel.value;
+    const first = blank !== null ? `<option value="">${esc(blank || 'Seleccionar billetera')}</option>` : '';
+    const opts = walletsSaldosPrimero().map(w=>`<option value="${attr(w.id)}">${esc(w.nombre)} · ${esc(w.banco)} · ${pesos(w.saldo||0)}</option>`).join('');
+    sel.innerHTML = first + opts;
+    if(old && Array.from(sel.options).some(o=>String(o.value)===String(old))) sel.value=old;
+  }
+
+  const oldRenderSelects = window.renderSelectsAjustes;
+  window.renderSelectsAjustes = function(){
+    try{ if(typeof oldRenderSelects === 'function') oldRenderSelects(); }catch(e){}
+    renderWalletOptionsV8('manualWorkerBilletera','No aplica / seleccionar billetera');
+    renderWalletOptionsV8('manualWorkerBilleteraInicio','No aplica / seleccionar billetera');
+    renderWalletOptionsV8('ajusteBilleteraId','Seleccionar billetera');
+    renderWalletOptionsV8('transferBilleteraOrigen','Seleccionar billetera');
+    renderWalletOptionsV8('transferBilleteraDestino','Seleccionar billetera');
+    renderWalletOptionsV8('chatWalletSelect','Elegir billetera disponible...');
+  };
+
+  const oldCargarSaldos = window.cargarSaldosOperativos || (typeof cargarSaldosOperativos !== 'undefined' ? cargarSaldosOperativos : null);
+  if(typeof oldCargarSaldos === 'function'){
+    window.cargarSaldosOperativos = cargarSaldosOperativos = async function(...args){
+      const r = await oldCargarSaldos.apply(this,args);
+      try{ window.saldosOperativos = saldosOperativos; }catch(e){}
+      try{ window.renderOpsWallets(); }catch(e){}
+      try{ window.renderBilleteras(); }catch(e){}
+      try{ window.renderSelectsAjustes(); }catch(e){}
+      return r;
+    };
+  }
+
+  setTimeout(()=>{
+    try{ if(typeof cargarSaldosOperativos === 'function') cargarSaldosOperativos(true); }catch(e){}
+    try{ window.renderOpsWallets(); }catch(e){}
+    try{ window.renderSelectsAjustes(); }catch(e){}
+  }, 900);
 })();
 </script>
 
