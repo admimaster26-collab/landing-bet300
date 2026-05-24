@@ -7252,12 +7252,55 @@ html, body { height:100%; overflow:hidden!important; }
     const w = wallets().find(x=>walletId(x)===sid);
     return w ? str(w.nombre_visible || w.NOMBRE_VISIBLE || w.nombre || w.BILLETERA_NOMBRE || 'Billetera') : ('#'+sid);
   }
+  const JOB_WALLET_MAP_KEY = () => 'nodo_job_wallet_map_' + pc();
+  function readJobWalletMap(){
+    try{return JSON.parse(localStorage.getItem(JOB_WALLET_MAP_KEY())||'{}')||{};}catch(e){return {};}
+  }
+  function writeJobWalletMap(map){
+    try{localStorage.setItem(JOB_WALLET_MAP_KEY(), JSON.stringify(map||{}));}catch(e){}
+  }
+  function rememberJobWallet(jobId,billeteraId){
+    if(!jobId || !billeteraId) return;
+    const map=readJobWalletMap();
+    map[str(jobId)] = str(billeteraId);
+    writeJobWalletMap(map);
+  }
   function extractWalletIdFromText(txt){
     const m = str(txt||'').match(/billetera_id\s*[=:]\s*(\d+)/i);
     return m ? m[1] : '';
   }
-  function jobWalletId(j){return str(j?.billetera_id ?? j?.ID_BILLETERA ?? extractWalletIdFromText(`${j?.observacion||''} ${j?.observaciones||''} ${j?.descripcion||''}`));}
-  function jobWalletName(j){return str(j?.billetera_nombre || j?.BILLETERA_NOMBRE || j?.wallet_nombre || '') || walletNameById(jobWalletId(j));}
+  function walletIdFromMovementsForJob(jobId){
+    const sid=str(jobId||'');
+    if(!sid) return '';
+    const movs = window.saldosOperativos?.movimientos_billetera || (typeof saldosOperativos!=='undefined' ? saldosOperativos?.movimientos_billetera : []) || [];
+    const m = Array.isArray(movs) ? movs.find(x=>str(x.worker_job_id)===sid && x.billetera_id) : null;
+    return m ? str(m.billetera_id) : '';
+  }
+  function walletNameFromMovementsForJob(jobId){
+    const sid=str(jobId||'');
+    if(!sid) return '';
+    const movs = window.saldosOperativos?.movimientos_billetera || (typeof saldosOperativos!=='undefined' ? saldosOperativos?.movimientos_billetera : []) || [];
+    const m = Array.isArray(movs) ? movs.find(x=>str(x.worker_job_id)===sid && (x.billetera_nombre || x.nombre_visible || x.banco)) : null;
+    if(!m) return '';
+    return str(m.billetera_nombre || m.nombre_visible || '') || walletNameById(m.billetera_id);
+  }
+  function jobWalletId(j){
+    const direct = str(j?.billetera_id ?? j?.ID_BILLETERA ?? j?.wallet_id ?? '');
+    if(direct) return direct;
+    const fromText = extractWalletIdFromText(`${j?.observacion||''} ${j?.observaciones||''} ${j?.descripcion||''} ${j?.resultado||''} ${j?.error_mensaje||''}`);
+    if(fromText) return fromText;
+    const fromMap = readJobWalletMap()[str(j?.id||'')];
+    if(fromMap) return fromMap;
+    return walletIdFromMovementsForJob(j?.id);
+  }
+  function jobWalletName(j){
+    const directName = str(j?.billetera_nombre || j?.BILLETERA_NOMBRE || j?.wallet_nombre || j?.nombre_billetera || '');
+    if(directName) return directName;
+    const fromMov = walletNameFromMovementsForJob(j?.id);
+    if(fromMov) return fromMov;
+    const wid = jobWalletId(j);
+    return wid ? walletNameById(wid) : '-';
+  }
 
   function resultCompact(resultado,error){
     const t = str(resultado||error||'');
@@ -7339,7 +7382,9 @@ html, body { height:100%; overflow:hidden!important; }
       if(error) throw error;
       const r=Array.isArray(data)?data[0]:data;
       if(r && r.ok===false) throw new Error(r.error||r.mensaje||'No se pudo crear el job.');
-      set(out,`<div class="ok-box">Enviado al worker. Job: <b>${esc(r?.job_id || r?.id || r?.job?.job_id || '-')}</b></div>`);
+      const createdJobId = r?.job_id || r?.id || r?.job?.job_id || r?.worker_job_id || r?.job?.id || '';
+      if(createdJobId && billeteraId) rememberJobWallet(createdJobId,billeteraId);
+      set(out,`<div class="ok-box">Enviado al worker. Job: <b>${esc(createdJobId || '-')}</b></div>`);
       const w=billeteraId;
       if($('manualWorkerUsuarioInicio')) $('manualWorkerUsuarioInicio').value='';
       if($('manualWorkerMontoInicio')) $('manualWorkerMontoInicio').value='';
