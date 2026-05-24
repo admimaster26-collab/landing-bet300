@@ -7162,5 +7162,324 @@ html, body { height:100%; overflow:hidden!important; }
 })();
 </script>
 
+
+<!-- =========================================================
+     NODO V18 · Limpio operativo
+     - MP como lista en su sección, no tarjetas en inicio.
+     - Chat refresca rápido sin pisar acción rápida.
+     - Acción rápida con + / - / 0, conserva billetera y guarda operador.
+     - Operaciones muestran billetera y operador.
+     - Conciliación de movimientos tras worker para actualizar saldos.
+========================================================= -->
+<style id="nodo-v18-operativo-clean">
+  body.nodo-v18 #mpPagosInicio{display:none!important}
+  body.nodo-v18 .mp-card-grid{display:block!important}
+  body.nodo-v18 .mp-list-wrap{border:1px solid rgba(255,255,255,.08);border-radius:14px;overflow:auto;max-height:calc(100vh - 250px);background:rgba(13,17,26,.72);scrollbar-gutter:stable both-edges}
+  body.nodo-v18 .mp-list-table{width:100%;border-collapse:collapse;min-width:1050px}
+  body.nodo-v18 .mp-list-table th{position:sticky;top:0;z-index:2;background:#141b27;color:#cbd5e1;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:10px;border-bottom:1px solid rgba(255,255,255,.08)}
+  body.nodo-v18 .mp-list-table td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;vertical-align:middle;white-space:nowrap}
+  body.nodo-v18 .mp-list-table td:nth-child(4),body.nodo-v18 .mp-list-table td:nth-child(5){white-space:normal;min-width:160px}
+  body.nodo-v18 .mp-list-table td:last-child,body.nodo-v18 .mp-list-table th:last-child{position:sticky;right:0;background:#101722;z-index:3;box-shadow:-8px 0 12px rgba(0,0,0,.25)}
+  body.nodo-v18 .mp-score-pill{display:inline-flex;align-items:center;justify-content:center;min-width:34px;border-radius:999px;padding:5px 8px;font-weight:950;background:#5a3d09;color:#ffd98f}
+  body.nodo-v18 .mp-score-pill.good{background:#11371f;color:#b9f7cb}.mp-score-pill.info{background:#16235f;color:#cbd5ff}
+  body.nodo-v18 .mp-list-actions{display:flex;gap:6px;align-items:center;flex-wrap:nowrap}
+  body.nodo-v18 .ops-main-table th:nth-child(11),body.nodo-v18 .ops-main-table td:nth-child(11){position:sticky;right:0;background:#101722;z-index:3;box-shadow:-8px 0 12px rgba(0,0,0,.25)}
+  body.nodo-v18 .ops-main-table th:nth-child(10),body.nodo-v18 .ops-main-table td:nth-child(10){right:118px;background:#101722;z-index:2}
+  body.nodo-v18 .nodo-v17-quick, body.nodo-v18 .nodo-v18-quick{border:1px solid rgba(18,183,106,.30);background:linear-gradient(145deg,rgba(18,183,106,.09),rgba(61,90,254,.04));border-radius:16px;padding:10px 12px;margin:0!important}
+  body.nodo-v18 .nodo-v18-quick-title{font-size:17px;font-weight:950;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+  body.nodo-v18 .nodo-v18-quick-grid{display:grid;grid-template-columns:minmax(150px,1.05fr) minmax(120px,.65fr) minmax(160px,.9fr) minmax(200px,1.15fr) minmax(100px,.55fr);gap:8px;align-items:end}
+  body.nodo-v18 .nodo-v18-quick label{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#cbd5e1;font-weight:900;display:block;margin:0 0 4px}
+  body.nodo-v18 .nodo-v18-quick input,body.nodo-v18 .nodo-v18-quick select{height:38px!important;padding:8px 10px!important;margin:0!important;border-radius:10px!important;min-width:0!important}
+  body.nodo-v18 .nodo-v18-preview{height:38px;display:flex;align-items:center;border-radius:10px;padding:0 10px;font-size:12px;font-weight:950;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#141b2a;border:1px solid rgba(255,255,255,.08)}
+  body.nodo-v18 .nodo-v18-preview.valida{background:rgba(61,90,254,.12);color:#dbe4ff;border-color:rgba(61,90,254,.32)}
+  body.nodo-v18 .nodo-v18-preview.carga{background:rgba(18,183,106,.14);color:#b9f7cb;border-color:rgba(18,183,106,.34)}
+  body.nodo-v18 .nodo-v18-preview.retiro{background:rgba(251,191,36,.14);color:#ffe2a2;border-color:rgba(251,191,36,.34)}
+  body.nodo-v18 .nodo-v18-preview.err{background:rgba(239,68,68,.14);color:#fecaca;border-color:rgba(239,68,68,.34)}
+  body.nodo-v18 .ops-table-wrap{overscroll-behavior:contain!important;scrollbar-gutter:stable both-edges!important}
+  @media(max-width:1180px){
+    body.nodo-v18 .nodo-v18-quick-grid{grid-template-columns:1fr 150px 150px;}
+    body.nodo-v18 .nodo-v18-quick-grid .wallet-cell{grid-column:1 / span 2}
+  }
+  @media(max-width:820px){
+    body.nodo-v18 .nodo-v18-quick-grid{grid-template-columns:1fr 1fr;}
+    body.nodo-v18 .nodo-v18-quick-grid .wallet-cell,body.nodo-v18 .nodo-v18-quick-grid .send-cell{grid-column:1 / -1}
+  }
+</style>
+<script id="nodo-v18-operativo-clean-js">
+(function(){
+  if(window.__NODO_V18_OPERATIVO_CLEAN__) return;
+  window.__NODO_V18_OPERATIVO_CLEAN__ = true;
+  document.body.classList.add('nodo-v18');
+
+  const S = {editingUntil:0, colaHtml:'', mpHtml:'', quickHtml:'', chatLast:0, conciliarBusy:false};
+  const $ = id => document.getElementById(id);
+  const str = v => String(v ?? '');
+  const esc = v => str(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+  const attr = v => esc(v).replace(/`/g,'&#096;');
+  const norm = v => str(v).trim().toUpperCase();
+  const val = id => $(id)?.value || '';
+  const set = (id,html)=>{ const el=$(id); if(el && el.innerHTML!==html) el.innerHTML=html; };
+  const pc = ()=>{ try{return window.pcOperativa || pcOperativa || 'P1';}catch(e){return 'P1';} };
+  const token = ()=>{ try{return requireSessionToken();}catch(e){return window.panelSessionToken || panelSessionToken || '';} };
+  const op = ()=>{ try{const o=window.operador||operador||{}; return o.usuario||o.nombre||o.NOMBRE||'operador';}catch(e){return 'operador';} };
+  const moneyLocal = v => { try{return money(v);}catch(e){return '$ '+Number(v||0).toLocaleString('es-AR',{maximumFractionDigits:0});} };
+  const fechaLocal = v => { try{return formatFecha(v);}catch(e){return esc(v||'-');} };
+  const badgeEstado = v => { try{return estadoBadge(v||'-');}catch(e){return esc(v||'-');} };
+  const badgeWorker = v => { try{return workerEstadoBadge(v||'SIN_WORKER');}catch(e){return esc(v||'-');} };
+  const notify = (m,t='blue')=>{try{toast(m,t)}catch(e){console.log(m)}};
+
+  function parseMonto(v){
+    let s = str(v).trim().replace(/\$/g,'').replace(/\s/g,'');
+    if(!s) return 0;
+    s = s.replace(/\./g,'').replace(',', '.');
+    const n = Number(s);
+    return Number.isFinite(n) ? n : NaN;
+  }
+  function editing(){return Date.now() < S.editingUntil || ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName||'');}
+  function markEditing(){S.editingUntil = Date.now()+1800;}
+  document.addEventListener('input',e=>{if((e.target?.id||'').startsWith('manualWorker')) markEditing();},true);
+  document.addEventListener('focusin',e=>{if((e.target?.id||'').startsWith('manualWorker')) markEditing();},true);
+  document.addEventListener('wheel',()=>{S.editingUntil = Math.max(S.editingUntil, Date.now()+700);},{passive:true});
+
+  function wallets(){
+    const src = (window.saldosOperativos?.billeteras || (typeof saldosOperativos!=='undefined' && saldosOperativos?.billeteras) || window.billeteras || []);
+    return Array.isArray(src) ? src : [];
+  }
+  function walletId(w){return str(w?.id ?? w?.billetera_id ?? w?.ID_BILLETERA ?? w?.ID ?? '');}
+  function walletNameById(id){
+    const sid=str(id||'');
+    if(!sid) return '-';
+    const w = wallets().find(x=>walletId(x)===sid);
+    return w ? str(w.nombre_visible || w.NOMBRE_VISIBLE || w.nombre || w.BILLETERA_NOMBRE || 'Billetera') : ('#'+sid);
+  }
+  function extractWalletIdFromText(txt){
+    const m = str(txt||'').match(/billetera_id\s*[=:]\s*(\d+)/i);
+    return m ? m[1] : '';
+  }
+  function jobWalletId(j){return str(j?.billetera_id ?? j?.ID_BILLETERA ?? extractWalletIdFromText(`${j?.observacion||''} ${j?.observaciones||''} ${j?.descripcion||''}`));}
+  function jobWalletName(j){return str(j?.billetera_nombre || j?.BILLETERA_NOMBRE || j?.wallet_nombre || '') || walletNameById(jobWalletId(j));}
+
+  function resultCompact(resultado,error){
+    const t = str(resultado||error||'');
+    if(error) return '<span class="nodo-v16-result-error">⚠️ Error</span>';
+    if(!t.trim()) return '-';
+    if(/OK|operaci[oó]n correcta|CARGA OK|RETIRO OK|VALIDAR USUARIO OK/i.test(t)) return '<span class="nodo-v16-result-ok">✅ OK</span>';
+    return '<span class="nodo-v16-result-ok">✅ OK</span>';
+  }
+
+  async function conciliarMovimientosWorker(){
+    if(S.conciliarBusy || !window.supabaseClient) return null;
+    S.conciliarBusy = true;
+    try{
+      const {data,error}=await supabaseClient.rpc('panel_operativo_conciliar_movimientos_worker',{p_session_token:token(),p_pc_codigo:pc()});
+      if(error){ console.warn('conciliar worker:', error.message||error); return null; }
+      return data;
+    }catch(e){ console.warn('conciliar worker:', e.message||e); return null; }
+    finally{S.conciliarBusy=false;}
+  }
+  window.nodoConciliarMovimientosWorker = conciliarMovimientosWorker;
+
+  async function refreshSaldosPostWorker(){
+    await conciliarMovimientosWorker();
+    try{ await (window.cargarSaldosOperativos || cargarSaldosOperativos)?.(true); }catch(e){}
+    try{ await (window.cargarSaldoAgenteRealtime || cargarSaldoAgenteRealtime)?.(false); }catch(e){}
+    try{ renderCentroOperativo(); }catch(e){}
+  }
+
+  function renderQuickV18(force=false){
+    if(editing() && !force) return;
+    const oldWallet = val('manualWorkerBilleteraInicio') || localStorage.getItem('nodo_last_wallet_v18_'+pc()) || localStorage.getItem('nodoUltimaBilleteraImpactada') || '';
+    const oldUser = val('manualWorkerUsuarioInicio');
+    const oldMonto = val('manualWorkerMontoInicio');
+    const html = `<div class="nodo-v18-quick">
+      <div class="nodo-v18-quick-title">⚡ Acción rápida</div>
+      <div class="nodo-v18-quick-grid">
+        <div><label>Usuario</label><input id="manualWorkerUsuarioInicio" placeholder="ej: pruebaxx" value="${attr(oldUser)}" autocomplete="off"></div>
+        <div><label>Monto</label><input id="manualWorkerMontoInicio" placeholder="0 valida · + carga · - retiro" value="${attr(oldMonto)}" autocomplete="off" oninput="nodoV18PreviewAccion()"></div>
+        <div><label>Acción</label><div id="nodoV18Preview" class="nodo-v18-preview valida">Validar usuario</div></div>
+        <div class="wallet-cell"><label>Billetera impactada</label><select id="manualWorkerBilleteraInicio" onchange="localStorage.setItem('nodo_last_wallet_v18_${attr(pc())}', this.value);localStorage.setItem('nodoUltimaBilleteraImpactada', this.value)"><option value="">No aplica / seleccionar</option>${wallets().map(w=>{const id=walletId(w); const nom=w.nombre_visible||w.NOMBRE_VISIBLE||w.nombre||w.BILLETERA_NOMBRE||'Billetera'; const banco=w.banco||w.BANCO||w.tipo||w.TIPO||''; const saldo=w.saldo||w.SALDO||0; return `<option value="${attr(id)}" ${str(id)===str(oldWallet)?'selected':''}>${esc(nom)} · ${esc(banco)} · ${moneyLocal(saldo)}</option>`}).join('')}</select></div>
+        <div class="send-cell"><label>&nbsp;</label><button class="btn btn-green" style="height:38px;margin:0;padding:0 12px" onclick="crearWorkerJobManualInicio()">Enviar</button></div>
+      </div>
+      <div id="manualWorkerResultadoInicio"></div>
+    </div>`;
+    if(S.quickHtml!==html || force){S.quickHtml=html; set('opsQuickTop',html);}
+    window.nodoV18PreviewAccion();
+  }
+  window.nodoV18PreviewAccion = function(){
+    const box=$('nodoV18Preview'); if(!box) return;
+    const n=parseMonto(val('manualWorkerMontoInicio'));
+    box.className='nodo-v18-preview';
+    if(!Number.isFinite(n)){box.classList.add('err'); box.textContent='Monto inválido'; return;}
+    if(n===0){box.classList.add('valida'); box.textContent='Validar usuario'; return;}
+    if(n>0){box.classList.add('carga'); box.textContent='Cargar fichas: '+moneyLocal(n); return;}
+    box.classList.add('retiro'); box.textContent='Retirar fichas: '+moneyLocal(Math.abs(n));
+  };
+
+  window.crearWorkerJobManualInicio = async function(){
+    const usuario=str(val('manualWorkerUsuarioInicio')).trim();
+    const montoRaw=parseMonto(val('manualWorkerMontoInicio'));
+    const billeteraId=str(val('manualWorkerBilleteraInicio')).trim();
+    const out='manualWorkerResultadoInicio';
+    if(!usuario){set(out,'<div class="err-box">Ingresá un usuario.</div>'); return;}
+    if(!Number.isFinite(montoRaw)){set(out,'<div class="err-box">El monto no es válido.</div>'); return;}
+    const tipo = montoRaw===0 ? 'VALIDAR_USUARIO' : (montoRaw>0 ? 'CARGAR_FICHAS' : 'PROCESAR_RETIRO');
+    const monto = Math.abs(montoRaw);
+    if(tipo!=='VALIDAR_USUARIO' && !billeteraId){set(out,'<div class="err-box">Seleccioná la billetera impactada.</div>'); return;}
+    if(billeteraId){localStorage.setItem('nodo_last_wallet_v18_'+pc(),billeteraId);localStorage.setItem('nodoUltimaBilleteraImpactada',billeteraId);}
+    set(out,'<div class="alert-box">Enviando al worker...</div>');
+    markEditing();
+    try{
+      let data,error;
+      try{
+        ({data,error}=await supabaseClient.rpc('operativo_accion_rapida_segura',{p_pc_codigo:pc(),p_operador:op(),p_usuario:usuario,p_tipo_accion:tipo,p_monto:tipo==='VALIDAR_USUARIO'?0:monto,p_billetera_id:tipo==='VALIDAR_USUARIO'?null:Number(billeteraId),p_observacion:`Acción rápida · operador=${op()} · billetera_id=${billeteraId || ''}`}));
+      }catch(e){ error=e; }
+      if(error){
+        ({data,error}=await supabaseClient.rpc('operativo_crear_worker_job_manual_v2',{p_pc_codigo:pc(),p_usuario:usuario,p_tipo_accion:tipo,p_monto:tipo==='VALIDAR_USUARIO'?0:monto,p_origen:'PANEL_OPERATIVO',p_billetera_id:billeteraId?Number(billeteraId):null,p_observacion:`Acción rápida · operador=${op()} · billetera_id=${billeteraId || ''}`}));
+      }
+      if(error) throw error;
+      const r=Array.isArray(data)?data[0]:data;
+      if(r && r.ok===false) throw new Error(r.error||r.mensaje||'No se pudo crear el job.');
+      set(out,`<div class="ok-box">Enviado al worker. Job: <b>${esc(r?.job_id || r?.id || r?.job?.job_id || '-')}</b></div>`);
+      const w=billeteraId;
+      if($('manualWorkerUsuarioInicio')) $('manualWorkerUsuarioInicio').value='';
+      if($('manualWorkerMontoInicio')) $('manualWorkerMontoInicio').value='';
+      if($('manualWorkerBilleteraInicio') && w) $('manualWorkerBilleteraInicio').value=w;
+      window.nodoV18PreviewAccion();
+      setTimeout(async()=>{try{await (window.cargarWorkerJobs||cargarWorkerJobs)?.(true); await refreshSaldosPostWorker(); renderQuickV18(true);}catch(e){}},700);
+      notify('Orden enviada al worker','green');
+    }catch(e){set(out,`<div class="err-box">${esc(e.message||e)}</div>`);}
+  };
+
+  function rowsOperativas(){
+    let rows=[];
+    (window.solicitudes||solicitudes||[]).forEach(s=>{
+      const sid=s.ID||s.SOLICITUD_ID||s.id||'';
+      const job=s.WORKER_JOB_ID||s.worker_job_id||'';
+      const jobRow=(window.workerJobs||workerJobs||[]).find(j=>str(j.id)===str(job))||{};
+      rows.push({origen:'LANDING',fecha:s.FECHA_CREACION||s.FECHA||s.created_at,usuario:s.USUARIO||s.usuario||'',sub:s.TITULAR_TRANSFERENCIA||s.titular_transferencia||s.NOMBRE_COMPLETO||'',billetera:s.BILLETERA_NOMBRE||s.billetera_nombre||walletNameById(s.ID_BILLETERA||s.billetera_id),tipo:s.TIPO_SOLICITUD||s.TIPO||s.tipo||'',monto:s.MONTO_DECLARADO||s.MONTO_REAL||s.monto||0,estado:s.ESTADO||s.estado||'',worker:s.ESTADO_WORKER||jobRow.estado||'',job,resultado:jobRow.resultado||s.WORKER_RESULTADO||'',error:s.WORKER_ERROR||jobRow.error_mensaje||'',sid,operador:s.OPERADOR||s.operador_usuario||s.aprobada_por||s.confirmado_por||''});
+    });
+    (window.workerJobs||workerJobs||[]).filter(j=>!j.solicitud_id).forEach(j=>rows.push({origen:'MANUAL',fecha:j.created_at||j.updated_at,usuario:j.usuario||'',sub:'',billetera:jobWalletName(j),tipo:j.tipo_accion||'',monto:j.monto||0,estado:j.estado||'',worker:j.estado||'',job:j.id||'',resultado:j.resultado||'',error:j.error_mensaje||'',sid:'',operador:j.operador||j.creado_por||j.worker_id||''}));
+    return rows;
+  }
+
+  function renderColaV18(force=false){
+    const wrap=$('opsColaUnificada')?.querySelector('.ops-table-wrap');
+    const top=wrap?.scrollTop||0,left=wrap?.scrollLeft||0;
+    if(editing() && !force && wrap && S.colaHtml) return;
+    let rows=rowsOperativas();
+    const texto=norm(val('opsFiltroTexto'));
+    const filtro=norm(val('opsFiltroEstado'));
+    rows.sort((a,b)=>new Date(b.fecha||0)-new Date(a.fecha||0));
+    if(filtro) rows=rows.filter(r=>norm(`${r.estado} ${r.worker}`).includes(filtro));
+    if(texto) rows=rows.filter(r=>norm(`${r.usuario} ${r.sub} ${r.tipo} ${r.estado} ${r.worker} ${r.error} ${r.job} ${r.sid} ${r.billetera} ${r.operador}`).includes(texto));
+    rows=rows.slice(0,100);
+    if(!rows.length){set('opsColaUnificada','<div class="alert-box">No hay operaciones para mostrar.</div>'); return;}
+    let html='<div class="ops-table-wrap"><table class="ops-main-table"><thead><tr><th>Hora</th><th>Origen</th><th>Usuario</th><th>Billetera</th><th>Tipo</th><th>Monto</th><th>Estado</th><th>Worker</th><th>Resultado</th><th>Operador</th><th>Acciones</th></tr></thead><tbody>';
+    rows.forEach(r=>{
+      const tipoN=norm(r.tipo), workerN=norm(r.worker), estadoN=norm(r.estado);
+      let acciones='<div class="ops-compact-actions">';
+      if(r.sid){
+        acciones+=`<button class="mini-btn blue" onclick="verSolicitudInicio('${attr(r.sid)}')">Ver</button>`;
+        if(tipoN==='CARGA') acciones+=`<button class="mini-btn gray" onclick="cargarPagosMp(false)">Buscar MP</button>`;
+        if(['PENDIENTE','NUEVA','EN_REVISION','APROBADA_MANUAL'].includes(estadoN) && !['COMPLETADO','PROCESANDO'].includes(workerN)){
+          if(tipoN==='RETIRO') acciones+=`<button class="mini-btn green" onclick="abrirCerrarRetiro('${attr(r.sid)}')">Aprobar retiro</button>`;
+          else acciones+=`<button class="mini-btn green" onclick="abrirAprobarSolicitud('${attr(r.sid)}')">Aprobar</button>`;
+          acciones+=`<button class="mini-btn red" onclick="abrirRechazarSolicitud('${attr(r.sid)}')">Rechazar</button>`;
+        }
+      }
+      if(r.job) acciones+=`<button class="mini-btn blue" onclick="abrirWorkerLogs('${attr(r.job)}')">Logs</button>`;
+      acciones+='</div>';
+      const mpChip=(tipoN==='CARGA' && r.sid)?' <span class="mp-pill info">MP</span>':'';
+      html+=`<tr><td>${fechaLocal(r.fecha)}</td><td><span class="ops-origin ${r.origen==='LANDING'?'landing':'manual'}">${esc(r.origen)}</span></td><td><b>${esc(r.usuario)}</b>${r.sub?`<br><span class="small">${esc(r.sub)}</span>`:''}</td><td>${esc(r.billetera||'-')}</td><td>${esc(r.tipo||'-')}${mpChip}</td><td>${moneyLocal(r.monto||0)}</td><td>${badgeEstado(r.estado||'-')}</td><td>${r.job?`#${esc(r.job)}<br>`:''}${badgeWorker(r.worker||'SIN_WORKER')}</td><td>${resultCompact(r.resultado,r.error)}</td><td>${esc(r.operador||'-')}</td><td>${acciones}</td></tr>`;
+    });
+    html+='</tbody></table></div>';
+    if(S.colaHtml!==html || force){S.colaHtml=html; set('opsColaUnificada',html); const nw=$('opsColaUnificada')?.querySelector('.ops-table-wrap'); if(nw){nw.scrollTop=top;nw.scrollLeft=left;}}
+  }
+  window.renderColaUnificada = renderColaUnificada = renderColaV18;
+
+  function mpRows(){return (window.__NODO_MP_DETECT__?.pagos || window.__NODO_MP_STATE__?.pagos || (typeof S!=='undefined' && S.pagos) || window.pagosMp || []).slice();}
+  function getPagosState(){ try{return window.__NODO_MP_DETECT__ || window.__NODO_MP_STATE__ || null;}catch(e){return null;} }
+  function renderPagosMpV18(){
+    const box=$('mpPagosBody'); if(!box) return;
+    const q=norm(val('mpFiltroTexto'));
+    const estado=norm(val('mpFiltroEstado'));
+    let rows=[];
+    try{
+      const st=getPagosState();
+      rows = st?.pagos?.slice?.() || [];
+    }catch(e){}
+    if(!rows.length && typeof pagosPendientes==='function') rows=pagosPendientes().slice();
+    if(!rows.length && window.__NODO_MP_LAST_ROWS) rows=window.__NODO_MP_LAST_ROWS.slice();
+    if(estado) rows=rows.filter(p=>norm(p.pago_match_estado||p.estado)===estado);
+    if(q) rows=rows.filter(p=>norm(`${p.solicitud_id} ${p.usuario} ${p.nombre_completo} ${p.origen_nombre} ${p.titular_transferencia} ${p.billetera_nombre} ${p.pago_match_motivo} ${p.descripcion}`).includes(q));
+    rows.sort((a,b)=>new Date(b.solicitud_created_at||b.created_at||b.fecha_movimiento||0)-new Date(a.solicitud_created_at||a.created_at||a.fecha_movimiento||0));
+    window.__NODO_MP_LAST_ROWS=rows.slice();
+    const badge=$('badgeMp'); if(badge){const c=rows.filter(p=>!['CONFIRMADO','DESCARTADO','RECHAZADO'].includes(norm(p.pago_match_estado||p.estado))).length; badge.textContent=c; badge.classList.toggle('hidden',!c);}
+    if(!rows.length){box.innerHTML='<div class="alert-box">No hay pagos Mercado Pago detectados para esta PC.</div>'; return;}
+    let html='<div class="mp-list-wrap"><table class="mp-list-table"><thead><tr><th>Solicitud</th><th>Usuario</th><th>Monto</th><th>Declarado</th><th>Detectado MP</th><th>Billetera</th><th>Score</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>';
+    rows.forEach(p=>{
+      const score=Number(p.pago_match_score||p.score||0); const cls=score>=85?'good':(score>=70?'info':''); const confirmado=norm(p.pago_match_estado||p.estado)==='CONFIRMADO';
+      html+=`<tr><td><b>#${esc(p.solicitud_id||'-')}</b><br><span class="small">${fechaLocal(p.solicitud_created_at||p.created_at||'')}</span></td><td><b>${esc(p.usuario||'-')}</b><br><span class="small">${esc(p.nombre_completo||'')}</span></td><td><b>${moneyLocal(p.monto||p.monto_neto||0)}</b><br><span class="small">Detectado: ${moneyLocal(p.monto_neto||p.mp_monto_detectado||p.monto||0)}</span></td><td>${esc(p.titular_transferencia||'-')}<br><span class="small">DNI: ${esc(p.dni_transferencia||'-')}</span></td><td>${esc(p.origen_nombre||p.mp_titular_detectado||'-')}<br><span class="small">Doc: ${esc(p.origen_documento||p.mp_dni_detectado||'-')}</span></td><td>${esc(p.billetera_nombre||'-')}</td><td><span class="mp-score-pill ${cls}">${esc(score)}</span></td><td>${esc(p.pago_match_estado||p.estado||'-')}</td><td><div class="mp-list-actions"><button class="mini-btn blue" onclick="verDetallePagoMp('${attr(p.solicitud_id)}')">Ver</button>${!confirmado?`<button class="mini-btn green" onclick="confirmarPagoMp('${attr(p.pago_match_id||p.id)}')">Confirmar</button><button class="mini-btn red" onclick="descartarPagoMp('${attr(p.pago_match_id||p.id)}')">Descartar</button>`:'<span class="mp-pill info">OK</span>'}</div></td></tr>`;
+    });
+    html+='</tbody></table></div>';
+    if(S.mpHtml!==html){S.mpHtml=html; box.innerHTML=html;}
+  }
+  window.renderPagosMp = renderPagosMp = renderPagosMpV18;
+  window.renderPagosMpInicio = renderPagosMpInicio = function(){const box=$('mpPagosInicio'); if(box) box.innerHTML='';};
+
+  async function chatPulseV18(){
+    if(!window.supabaseClient || !token()) return;
+    if(Date.now()-S.chatLast<1400) return;
+    S.chatLast=Date.now();
+    try{
+      const fn = window.__orig_cargarChats || window.cargarChats || (typeof cargarChats!=='undefined'?cargarChats:null);
+      if(typeof fn==='function') await fn(true);
+      const unread = typeof totalUnread==='function' ? totalUnread() : ((window.chats||chats||[]).reduce((a,c)=>a+Number(c.SIN_LEER||0),0));
+      const b=$('badgeChat'); if(b){b.textContent=unread; b.classList.toggle('hidden',!unread);}
+      const st=$('statChats'); if(st) st.textContent=unread;
+    }catch(e){console.warn('chat pulse',e.message||e);}
+  }
+  window.nodoChatPulseV18 = chatPulseV18;
+
+  const oldCargarWorker = window.cargarWorkerJobs || (typeof cargarWorkerJobs!=='undefined'?cargarWorkerJobs:null);
+  if(typeof oldCargarWorker==='function'){
+    window.cargarWorkerJobs = cargarWorkerJobs = async function(...args){
+      const r=await oldCargarWorker.apply(this,args);
+      setTimeout(refreshSaldosPostWorker,300);
+      return r;
+    };
+  }
+  const oldRefrescar = window.refrescarTodo || (typeof refrescarTodo!=='undefined'?refrescarTodo:null);
+  if(typeof oldRefrescar==='function'){
+    window.refrescarTodo = refrescarTodo = async function(showToast=true){
+      const r=await oldRefrescar.call(this,showToast);
+      await refreshSaldosPostWorker();
+      return r;
+    };
+  }
+  const oldRenderCentro = window.renderCentroOperativo || (typeof renderCentroOperativo!=='undefined'?renderCentroOperativo:null);
+  window.renderCentroOperativo = renderCentroOperativo = function(){
+    try{ if(typeof renderOpsKpis==='function') renderOpsKpis(); }catch(e){}
+    try{ if(typeof renderOpsWallets==='function') renderOpsWallets(); }catch(e){}
+    renderQuickV18(false);
+    try{ renderPagosMpInicio(); }catch(e){}
+    renderColaV18(false);
+  };
+
+  function bootV18(){
+    document.body.classList.add('nodo-v18');
+    try{ const mp=$('mpPagosInicio'); if(mp) mp.innerHTML=''; }catch(e){}
+    renderQuickV18(true);
+    try{ renderCentroOperativo(); }catch(e){}
+    try{ renderPagosMpV18(); }catch(e){}
+    try{ refreshSaldosPostWorker(); }catch(e){}
+  }
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(bootV18,900));
+  window.addEventListener('load',()=>setTimeout(bootV18,1300));
+  setInterval(()=>{ try{chatPulseV18();}catch(e){} },1800);
+  setInterval(()=>{ try{refreshSaldosPostWorker();}catch(e){} },8000);
+})();
+</script>
+
 </body>
 </html>
