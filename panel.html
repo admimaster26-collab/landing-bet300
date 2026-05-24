@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>NODO · OPERATIVO</title>
+<title>NODO · OPERATIVO PC4 COMPACTO V5</title>
 
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif}
@@ -260,6 +260,12 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
 /* NODO V9 · UX compacta y scroll estable */
 .main{overscroll-behavior:contain;scroll-behavior:auto;will-change:scroll-position}.table-wrap,.ops-table-wrap,.chat-body{overscroll-behavior:contain;scroll-behavior:auto;scrollbar-gutter:stable both-edges}.ops-table-wrap{max-height:64vh}.ops-main-table th,.ops-main-table td{white-space:nowrap}.ops-main-table td:nth-child(8){white-space:normal;min-width:230px}.ops-main-table td:last-child,.ops-main-table th:last-child{position:sticky;right:0;background:#111722;z-index:2}.ops-alert,.mp-detect-sub,.ops-sub,.worker-live-small{display:none!important}.mp-detect-panel{margin-top:8px}.ops-wallet-strip{grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}.ops-wallet{padding:10px}.ops-wallet-meta{font-size:11px;line-height:1.25}.ops-kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}.ops-kpi{padding:10px}.ops-kpi-value{font-size:24px}.nav-btn{min-height:42px}.alert-box{padding:10px}.view-title-sub,.page-help,.hint-panel{display:none!important}
 
+</style>
+
+<style id="nodo-v14-fix-kpis">
+  .v14-kpis-fijas .v10-kpi small,
+  .v13-kpi-sub{display:block;margin-top:5px;font-size:11px;line-height:1.15;opacity:.72;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+  .v14-kpis-fijas .v10-kpi.v14-real{border-color:rgba(34,197,94,.32);background:linear-gradient(180deg,rgba(16,185,129,.13),rgba(15,23,42,.65));}
 </style>
 </head>
 
@@ -7912,15 +7918,25 @@ html,body{height:100%;overflow:hidden!important}.main{height:100vh!important;ove
     const solicitudes=solicitudesV10();
     const jobs=workerJobsV10();
     const sal=saldosV10();
-    const bs=sal.billeteras||[];
     const fichas=Number(sal.fichas?.saldo||0);
-    const total=bs.reduce((a,b)=>a+Number(b.saldo||0),0);
     const pendientes=solicitudes.filter(s=>isPendienteEstado(s.ESTADO||s.estado)).length;
     const workerActivos=jobs.filter(j=>isPendienteEstado(j.estado)).length;
     const chatSinLeer=chatsV10().reduce((a,c)=>a+Number(c.SIN_LEER||c.sin_leer||0),0);
-    return `<div class="v10-kpis">
-      <div class="v10-kpi"><span>Fichas</span><b>${pesos(fichas)}</b></div>
-      <div class="v10-kpi"><span>Billeteras</span><b>${pesos(total)}</b></div>
+
+    // V14: mantener fijo el saldo real del agente aunque haya refresh parcial.
+    let saldoAgente = null;
+    let ultimo = 'El worker lo actualiza al operar';
+    try{
+      const live = window.__nodoSaldoAgenteUltra || JSON.parse(localStorage.getItem('nodo_saldo_agente_'+currentPc()) || 'null');
+      if(live && Number.isFinite(Number(live.saldo_agente))){
+        saldoAgente = Number(live.saldo_agente);
+        ultimo = `${live.ultimo_tipo || live.tipo_job || '-'} · ${live.ultimo_usuario || live.usuario_jugador || '-'}`;
+      }
+    }catch(e){}
+
+    return `<div class="v10-kpis v14-kpis-fijas">
+      <div class="v10-kpi v14-real"><span>Saldo agente real</span><b>${saldoAgente === null ? 'Sin dato' : pesos(saldoAgente)}</b><small>${esc(ultimo)}</small></div>
+      <div class="v10-kpi"><span>Fichas netas</span><b>${pesos(fichas)}</b><small>Carga resta · retiro suma</small></div>
       <div class="v10-kpi"><span>Pendientes</span><b>${pendientes}</b></div>
       <div class="v10-kpi"><span>Worker</span><b>${workerActivos}</b></div>
       <div class="v10-kpi"><span>Chat</span><b>${chatSinLeer}</b></div>
@@ -8275,7 +8291,10 @@ body.nodo-v10-unificado #nodoV10Scroll{
       });
       if(error) return null;
       const row = Array.isArray(data) ? (data[0] || null) : (data || null);
-      if(row) window.__nodoSaldoAgenteUltra = row;
+      if(row){
+        window.__nodoSaldoAgenteUltra = row;
+        try{ localStorage.setItem('nodo_saldo_agente_'+uPc(), JSON.stringify(row)); }catch(e){}
+      }
       const k = document.getElementById("v10Kpis");
       if(k && typeof renderKpisV10 === "function") k.innerHTML = renderKpisV10();
       return row;
@@ -8290,9 +8309,10 @@ body.nodo-v10-unificado #nodoV10Scroll{
     const chats = (typeof chatsV10 === "function" ? chatsV10() : (window.chats || []));
     const sal = (typeof saldosV10 === "function" ? saldosV10() : (window.saldosOperativos || {}));
     const fichasNetas = Number(sal?.fichas?.saldo || 0);
-    const saldoLive = window.__nodoSaldoAgenteUltra || null;
+    let saldoLive = window.__nodoSaldoAgenteUltra || null;
+    try{ if(!saldoLive) saldoLive = JSON.parse(localStorage.getItem('nodo_saldo_agente_'+uPc()) || 'null'); }catch(e){}
     const saldoAgente = saldoLive && Number.isFinite(Number(saldoLive.saldo_agente)) ? Number(saldoLive.saldo_agente) : null;
-    const ultimo = saldoLive ? `${saldoLive.ultimo_tipo || "-"} · ${saldoLive.ultimo_usuario || "-"}` : "El worker lo actualiza al operar";
+    const ultimo = saldoLive ? `${saldoLive.ultimo_tipo || saldoLive.tipo_job || "-"} · ${saldoLive.ultimo_usuario || saldoLive.usuario_jugador || "-"}` : "El worker lo actualiza al operar";
     const pendientes = solicitudes.filter(s=>{
       try { return typeof isPendienteEstado === "function" ? isPendienteEstado(s.ESTADO || s.estado) : ["PENDIENTE","NUEVA","EN_REVISION"].includes(uN(s.ESTADO||s.estado)); }
       catch(e){ return false; }
@@ -8400,5 +8420,80 @@ body.nodo-v10-unificado #nodoV10Scroll{
 })();
 </script>
 
+
+<script id="nodo-v14-kpis-estables-final">
+(function(){
+  if(window.__NODO_V14_KPIS_ESTABLES__) return;
+  window.__NODO_V14_KPIS_ESTABLES__ = true;
+
+  function safe(fn, fb){ try{return fn();}catch(e){return fb;} }
+  function pc(){ return safe(()=>String(window.pcOperativa || pcOperativa || '').toUpperCase(), ''); }
+  function money(v){
+    const n = Number(v || 0);
+    try{return '$ ' + n.toLocaleString('es-AR',{maximumFractionDigits:0});}catch(e){return '$ '+n;}
+  }
+  function esc(v){return String(v ?? '').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+  function norm(v){return String(v||'').trim().toUpperCase();}
+  function isPending(v){return ['PENDIENTE','NUEVA','NUEVO','EN_REVISION','REINTENTAR','ERROR','ERROR_JOB','REQUIERE_MANUAL','PROCESANDO'].includes(norm(v));}
+  function arr(name){ return safe(()=>Array.isArray(window[name])?window[name]:eval(name), []); }
+  function saldos(){ return safe(()=>window.saldosOperativos || saldosOperativos || {}, {}); }
+
+  window.nodoRenderKpisV14 = function(){
+    const solicitudes = arr('solicitudes');
+    const jobs = arr('workerJobs');
+    const chats = arr('chats');
+    const sal = saldos();
+    const fichas = Number(sal?.fichas?.saldo || 0);
+    let live = window.__nodoSaldoAgenteUltra || null;
+    try{ if(!live) live = JSON.parse(localStorage.getItem('nodo_saldo_agente_'+pc()) || 'null'); }catch(e){}
+    const saldoAgente = live && Number.isFinite(Number(live.saldo_agente)) ? Number(live.saldo_agente) : null;
+    const ultimo = live ? `${live.ultimo_tipo || live.tipo_job || '-'} · ${live.ultimo_usuario || live.usuario_jugador || '-'}` : 'El worker lo actualiza al operar';
+    const pendientes = solicitudes.filter(s=>isPending(s.ESTADO || s.estado)).length;
+    const worker = jobs.filter(j=>isPending(j.estado || j.ESTADO)).length;
+    const unread = chats.reduce((a,c)=>a+Number(c.SIN_LEER||c.sin_leer||0),0);
+    return `<div class="v10-kpis v14-kpis-fijas">
+      <div class="v10-kpi v14-real"><span>Saldo agente real</span><b>${saldoAgente===null?'Sin dato':money(saldoAgente)}</b><small>${esc(ultimo)}</small></div>
+      <div class="v10-kpi"><span>Fichas netas</span><b>${money(fichas)}</b><small>Carga resta · retiro suma</small></div>
+      <div class="v10-kpi"><span>Pendientes</span><b>${pendientes}</b></div>
+      <div class="v10-kpi"><span>Worker</span><b>${worker}</b></div>
+      <div class="v10-kpi"><span>Chat</span><b>${unread}</b></div>
+    </div>`;
+  };
+
+  function aplicarKpis(){
+    const k = document.getElementById('v10Kpis');
+    if(k) k.innerHTML = window.nodoRenderKpisV14();
+  }
+
+  const oldCentro = window.renderCentroOperativo;
+  window.renderCentroOperativo = function(force){
+    const r = oldCentro ? oldCentro(force) : undefined;
+    setTimeout(aplicarKpis, 0);
+    setTimeout(aplicarKpis, 80);
+    return r;
+  };
+  window.renderInicio = window.renderCentroOperativo;
+
+  const oldCentroV10 = window.renderCentroV10;
+  window.renderCentroV10 = function(force){
+    const r = oldCentroV10 ? oldCentroV10(force) : (window.renderCentroOperativo ? window.renderCentroOperativo(force) : undefined);
+    setTimeout(aplicarKpis, 0);
+    setTimeout(aplicarKpis, 80);
+    return r;
+  };
+
+  const oldSaldo = window.cargarSaldoAgenteUltra;
+  window.cargarSaldoAgenteUltra = async function(){
+    const r = oldSaldo ? await oldSaldo() : null;
+    try{ if(window.__nodoSaldoAgenteUltra) localStorage.setItem('nodo_saldo_agente_'+pc(), JSON.stringify(window.__nodoSaldoAgenteUltra)); }catch(e){}
+    aplicarKpis();
+    return r;
+  };
+
+  setTimeout(aplicarKpis, 300);
+  setTimeout(aplicarKpis, 1200);
+  setInterval(aplicarKpis, 2500);
+})();
+</script>
 </body>
 </html>
