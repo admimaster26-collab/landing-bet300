@@ -564,6 +564,15 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
             <button class="btn btn-green" onclick="guardarTransferenciaBilletera()">Mover saldo</button>
             <div id="transferBilleteraResultado" style="margin-top:12px"></div>
           </div>
+          <div class="ops-panel">
+            <div class="ops-panel-title">Corregir billetera de job</div>
+            <div class="small" style="margin-bottom:10px">Reasigna la billetera asociada al job y a su propio movimiento contable. No reintenta ni modifica la operacion ya ejecutada por el worker.</div>
+            <label>Job ID</label><input id="corregirJobBilleteraId" type="number" min="1" placeholder="ej: 1820">
+            <label>Billetera correcta</label><select id="corregirJobBilleteraNueva"></select>
+            <label>Motivo</label><input id="corregirJobBilleteraMotivo" placeholder="obligatorio">
+            <button class="btn btn-primary" onclick="corregirBilleteraJobPanel()">Corregir billetera</button>
+            <div id="corregirJobBilleteraResultado" style="margin-top:12px"></div>
+          </div>
         </div>
       </section>
 
@@ -1673,6 +1682,8 @@ async function cargarBilleteras(render=true){
 
   billeterasTodas = (data || []).map(mapBilleteraSupabase);
   billeteras = billeterasTodas.filter(b => String(b.PC || "") === String(pcOperativa || ""));
+  window.billeterasTodas = billeterasTodas;
+  window.billeteras = billeteras;
 
   if(render)renderBilleteras();
   renderWalletSelectChat();
@@ -2889,6 +2900,7 @@ async function cargarWorkerJobs(showToast=false){
   }
 
   workerJobs = data || [];
+  window.workerJobs = workerJobs;
   renderWorkerJobs();
   if(typeof renderCentroOperativo==='function')renderCentroOperativo();
 
@@ -5151,6 +5163,7 @@ async function cerrarSesion(){
       todo:4000
     }
   };
+  window.__NODO_FIRST_SYNC_READY__ = false;
 
   function n(v){ return String(v||"").trim(); }
   function norm(v){ return n(v).toUpperCase(); }
@@ -5286,6 +5299,7 @@ async function cerrarSesion(){
     clearTimeout(S.timers.heavy);
     S.timers.heavy=setTimeout(()=>flushHeavy(reason), 450);
   }
+  window.queueHeavy = queueHeavy;
 
   async function flushHeavy(reason="manual"){
     if(editing()){
@@ -5305,9 +5319,11 @@ async function cerrarSesion(){
       refreshBilleteras(false)
     ]);
     try{ if(typeof renderInicio==="function") renderInicio(); }catch(e){}
+    window.__NODO_FIRST_SYNC_READY__ = true;
     try{ if(typeof renderCentroOperativo==="function") renderCentroOperativo(); }catch(e){}
     setSyncStatus("Sync activo","ok");
   }
+  window.flushHeavy = flushHeavy;
 
   // Throttle de funciones pesadas llamadas por timers viejos.
   function wrapLoader(name, key, minMs){
@@ -7242,8 +7258,26 @@ html, body { height:100%; overflow:hidden!important; }
   document.addEventListener('wheel',()=>{S.editingUntil = Math.max(S.editingUntil, Date.now()+700);},{passive:true});
 
   function wallets(){
-    const src = (window.saldosOperativos?.billeteras || (typeof saldosOperativos!=='undefined' && saldosOperativos?.billeteras) || window.billeteras || []);
-    return Array.isArray(src) ? src : [];
+    const sources = [
+      window.saldosOperativos?.billeteras,
+      (typeof saldosOperativos!=='undefined' && saldosOperativos?.billeteras),
+      window.billeteras,
+      (typeof billeteras!=='undefined' ? billeteras : null),
+      window.billeterasTodas,
+      (typeof billeterasTodas!=='undefined' ? billeterasTodas : null)
+    ];
+    const out = [];
+    const seen = new Set();
+    sources.forEach(src=>{
+      if(!Array.isArray(src)) return;
+      src.forEach(w=>{
+        const id = walletId(w);
+        if(!id || seen.has(id)) return;
+        seen.add(id);
+        out.push(w);
+      });
+    });
+    return out;
   }
   function walletId(w){return str(w?.id ?? w?.billetera_id ?? w?.ID_BILLETERA ?? w?.ID ?? '');}
   function walletNameById(id){
@@ -7265,6 +7299,71 @@ html, body { height:100%; overflow:hidden!important; }
     map[str(jobId)] = str(billeteraId);
     writeJobWalletMap(map);
   }
+  async function loadJobWalletMapFromDb(force=false){
+    const now = Date.now();
+    if(!force && window.__NODO_JOB_WALLET_MAP_AT__ && now - window.__NODO_JOB_WALLET_MAP_AT__ < 5000) return window.__NODO_JOB_WALLET_MAP__ || {};
+    if(!window.supabaseClient || !pc()) return window.__NODO_JOB_WALLET_MAP__ || {};
+    try{
+      const rpc = await supabaseClient.rpc('panel_operativo_get_worker_job_billeteras', {
+        p_session_token: token(),
+        p_pc_codigo: pc(),
+        p_limit: 1000
+      });
+      if(!rpc.error && Array.isArray(rpc.data)){
+        const map = {};
+        rpc.data.forEach(m=>{
+          const jid = str(m.worker_job_id);
+          if(jid && m.billetera_id && !map[jid]) map[jid] = str(m.billetera_id);
+        });
+        window.__NODO_JOB_WALLET_MAP__ = map;
+        window.__NODO_JOB_WALLET_MAP_AT__ = now;
+        try{ Object.entries(map).forEach(([jobId,billeteraId])=>rememberJobWallet(jobId,billeteraId)); }catch(e){}
+        return map;
+      }
+      if(rpc.error) console.warn('RPC job/billetera no disponible:', rpc.error.message || rpc.error);
+    }catch(e){
+      console.warn('RPC job/billetera no disponible:', e.message || e);
+    }
+    try{
+      const {data,error}=await supabaseClient
+        .from('billetera_movimientos')
+        .select('worker_job_id,billetera_id,created_at')
+        .eq('pc_codigo', pc())
+        .not('worker_job_id','is',null)
+        .order('created_at',{ascending:false})
+        .limit(600);
+      if(error) throw error;
+      const map = {};
+      (data || []).forEach(m=>{
+        const jid = str(m.worker_job_id);
+        if(jid && m.billetera_id && !map[jid]) map[jid] = str(m.billetera_id);
+      });
+      window.__NODO_JOB_WALLET_MAP__ = map;
+      window.__NODO_JOB_WALLET_MAP_AT__ = now;
+      try{ Object.entries(map).forEach(([jobId,billeteraId])=>rememberJobWallet(jobId,billeteraId)); }catch(e){}
+      return map;
+    }catch(e){
+      console.warn('No se pudo cargar mapa job/billetera:', e.message || e);
+      window.__NODO_JOB_WALLET_MAP_AT__ = now;
+      return window.__NODO_JOB_WALLET_MAP__ || {};
+    }
+  }
+  function applyJobWalletMapToWorkers(map){
+    map = map || window.__NODO_JOB_WALLET_MAP__ || readJobWalletMap();
+    const applyOne = j => {
+      if(!j || !j.id) return j;
+      const wid = map[str(j.id)];
+      if(wid && !j.billetera_id && !j.BILLETERA_ID && !j.ID_BILLETERA){
+        j.billetera_id = wid;
+        j.BILLETERA_ID = wid;
+      }
+      return j;
+    };
+    try{
+      if(Array.isArray(window.workerJobs)) window.workerJobs.forEach(applyOne);
+      if(typeof workerJobs !== 'undefined' && Array.isArray(workerJobs)) workerJobs.forEach(applyOne);
+    }catch(e){}
+  }
   function extractWalletIdFromText(txt){
     const m = str(txt||'').match(/billetera_id\s*[=:]\s*(\d+)/i);
     return m ? m[1] : '';
@@ -7285,16 +7384,26 @@ html, body { height:100%; overflow:hidden!important; }
     return str(m.billetera_nombre || m.nombre_visible || '') || walletNameById(m.billetera_id);
   }
   function jobWalletId(j){
-    const direct = str(j?.billetera_id ?? j?.ID_BILLETERA ?? j?.wallet_id ?? '');
+    let payload = j?.payload || {};
+    if(typeof payload === 'string'){
+      try{ payload = JSON.parse(payload); }catch(e){ payload = {}; }
+    }
+    const direct = str(j?.billetera_id ?? j?.BILLETERA_ID ?? j?.ID_BILLETERA ?? j?.wallet_id ?? payload?.billetera_id ?? payload?.BILLETERA_ID ?? '');
     if(direct) return direct;
     const fromText = extractWalletIdFromText(`${j?.observacion||''} ${j?.observaciones||''} ${j?.descripcion||''} ${j?.resultado||''} ${j?.error_mensaje||''}`);
     if(fromText) return fromText;
     const fromMap = readJobWalletMap()[str(j?.id||'')];
     if(fromMap) return fromMap;
+    const fromDbMap = window.__NODO_JOB_WALLET_MAP__?.[str(j?.id||'')];
+    if(fromDbMap) return fromDbMap;
     return walletIdFromMovementsForJob(j?.id);
   }
   function jobWalletName(j){
-    const directName = str(j?.billetera_nombre || j?.BILLETERA_NOMBRE || j?.wallet_nombre || j?.nombre_billetera || '');
+    let payload = j?.payload || {};
+    if(typeof payload === 'string'){
+      try{ payload = JSON.parse(payload); }catch(e){ payload = {}; }
+    }
+    const directName = str(j?.billetera_nombre || j?.BILLETERA_NOMBRE || j?.wallet_nombre || j?.nombre_billetera || payload?.billetera_nombre || payload?.BILLETERA_NOMBRE || '');
     if(directName) return directName;
     const fromMov = walletNameFromMovementsForJob(j?.id);
     if(fromMov) return fromMov;
@@ -7325,6 +7434,7 @@ html, body { height:100%; overflow:hidden!important; }
   async function refreshSaldosPostWorker(){
     await conciliarMovimientosWorker();
     try{ await (window.cargarSaldosOperativos || cargarSaldosOperativos)?.(true); }catch(e){}
+    try{ applyJobWalletMapToWorkers(await loadJobWalletMapFromDb(true)); }catch(e){}
     try{ await (window.cargarSaldoAgenteRealtime || cargarSaldoAgenteRealtime)?.(false); }catch(e){}
     try{ renderCentroOperativo(); }catch(e){}
   }
@@ -7410,6 +7520,10 @@ html, body { height:100%; overflow:hidden!important; }
   function renderColaV18(force=false){
     const wrap=$('opsColaUnificada')?.querySelector('.ops-table-wrap');
     const top=wrap?.scrollTop||0,left=wrap?.scrollLeft||0;
+    if(window.__NODO_FIRST_SYNC_READY__ === false && !force){
+      set('opsColaUnificada','<div class="alert-box">Sincronizando solicitudes, worker y billeteras...</div>');
+      return;
+    }
     if(editing() && !force && wrap && S.colaHtml) return;
     let rows=rowsOperativas();
     const texto=norm(val('opsFiltroTexto'));
@@ -7490,6 +7604,7 @@ html, body { height:100%; overflow:hidden!important; }
   if(typeof oldCargarWorker==='function'){
     window.cargarWorkerJobs = cargarWorkerJobs = async function(...args){
       const r=await oldCargarWorker.apply(this,args);
+      try{ applyJobWalletMapToWorkers(await loadJobWalletMapFromDb(false)); }catch(e){}
       setTimeout(refreshSaldosPostWorker,300);
       return r;
     };
@@ -7514,7 +7629,12 @@ html, body { height:100%; overflow:hidden!important; }
   function bootV18(){
     document.body.classList.add('nodo-v18');
     try{ const mp=$('mpPagosInicio'); if(mp) mp.innerHTML=''; }catch(e){}
+    if(window.__NODO_FIRST_SYNC_READY__ === false){
+      set('opsColaUnificada','<div class="alert-box">Sincronizando solicitudes, worker y billeteras...</div>');
+      try{ if(typeof window.queueHeavy==='function') window.queueHeavy('startup'); }catch(e){}
+    }
     renderQuickV18(true);
+    try{ loadJobWalletMapFromDb(false).then(map=>{ applyJobWalletMapToWorkers(map); try{ renderCentroOperativo(); }catch(e){} }); }catch(e){}
     try{ renderCentroOperativo(); }catch(e){}
     try{ renderPagosMpV18(); }catch(e){}
     try{ refreshSaldosPostWorker(); }catch(e){}
@@ -7526,5 +7646,579 @@ html, body { height:100%; overflow:hidden!important; }
 })();
 </script>
 
+<script>
+/* ---------- Correccion administrativa de billetera por job ---------- */
+(function(){
+  function $(id){ return document.getElementById(id); }
+  function esc(v){
+    return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function attr(v){ return esc(v); }
+  function token(){
+    try{ if(typeof requireSessionToken === 'function') return requireSessionToken(); }catch(e){}
+    return window.panelSessionToken || '';
+  }
+  function currentPc(){
+    try{ return String(window.pcOperativa || pcOperativa || '').trim().toUpperCase(); }catch(e){ return ''; }
+  }
+  function currentUser(){
+    try{
+      if(typeof currentOperator === 'function') return currentOperator();
+      const op = window.operador || operador || {};
+      return op.usuario || op.nombre || localStorage.getItem('nodo_panel_operador') || 'panel';
+    }catch(e){ return localStorage.getItem('nodo_panel_operador') || 'panel'; }
+  }
+  function wallets(){
+    const so = window.saldosOperativos || (typeof saldosOperativos !== 'undefined' ? saldosOperativos : null);
+    const sources = [
+      so?.billeteras,
+      window.billeteras,
+      (typeof billeteras !== 'undefined' ? billeteras : null),
+      window.billeterasTodas,
+      (typeof billeterasTodas !== 'undefined' ? billeterasTodas : null)
+    ];
+    const out = [];
+    const seen = new Set();
+    sources.forEach(src=>{
+      if(!Array.isArray(src)) return;
+      src.forEach(w=>{
+        const id = w?.id || w?.billetera_id || w?.ID_BILLETERA || w?.ID;
+        if(!id || seen.has(String(id))) return;
+        seen.add(String(id));
+        out.push(w);
+      });
+    });
+    if(out.length) return out;
+    const fromSelect = document.getElementById('manualWorkerBilleteraInicio') || document.getElementById('ajusteBilleteraId');
+    if(fromSelect){
+      return Array.from(fromSelect.options || [])
+        .filter(o=>o.value)
+        .map(o=>({id:o.value,nombre_visible:o.textContent || ('Billetera #'+o.value)}));
+    }
+    return [];
+  }
+  function walletLabel(b){
+    const id = b.id || b.billetera_id || b.ID_BILLETERA || b.ID;
+    const nombre = b.nombre_visible || b.NOMBRE_VISIBLE || b.nombre || b.NOMBRE || b.billetera_nombre || b.BILLETERA_NOMBRE || b.alias || b.ALIAS || ('Billetera #' + id);
+    const saldo = Number(b.saldo ?? b.SALDO ?? b.saldo_actual ?? b.SALDO_ACTUAL ?? 0);
+    const saldoTxt = Number.isFinite(saldo) ? saldo.toLocaleString('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}) : '';
+    return `${nombre}${saldoTxt ? ' · ' + saldoTxt : ''}`;
+  }
+  function fillSelect(selected=''){
+    const sel = $('corregirJobBilleteraNueva');
+    if(!sel) return;
+    const old = selected || sel.value;
+    const list = wallets();
+    sel.innerHTML = '<option value="">Seleccionar billetera</option>' + list.map(b => {
+      const id = b.id || b.billetera_id || b.ID_BILLETERA || b.ID;
+      if(!id) return '';
+      return `<option value="${attr(id)}">${esc(walletLabel({...b,id}))}</option>`;
+    }).join('');
+    if(old) sel.value = old;
+  }
+  function findJob(jobId){
+    const list = window.workerJobs || (typeof workerJobs !== 'undefined' ? workerJobs : []);
+    return (Array.isArray(list) ? list : []).find(j => String(j.id) === String(jobId)) || null;
+  }
+  function jobWalletIdFromAny(jobId){
+    const j = findJob(jobId);
+    let payload = j?.payload || {};
+    if(typeof payload === 'string'){
+      try{ payload = JSON.parse(payload); }catch(e){ payload = {}; }
+    }
+    return String(j?.billetera_id || j?.BILLETERA_ID || j?.ID_BILLETERA || payload?.billetera_id || payload?.BILLETERA_ID || window.__NODO_JOB_WALLET_MAP__?.[String(jobId)] || '');
+  }
+  function walletNameSafe(id){
+    const w = wallets().find(x => String(x.id || x.billetera_id || x.ID_BILLETERA || x.ID) === String(id));
+    return w ? walletLabel(w) : (id ? ('#' + id) : 'sin dato');
+  }
+  function showJobHint(jobId){
+    const box = $('corregirJobBilleteraResultado');
+    if(!box || !jobId) return;
+    const j = findJob(jobId);
+    if(!j) return;
+    const actual = jobWalletIdFromAny(jobId);
+    box.innerHTML = `<div class="alert-box">Job #${esc(j.id)} · ${esc(j.usuario || '-')} · ${esc(j.tipo_accion || '-')} · billetera actual: ${esc(actual || 'sin dato')}</div>`;
+  }
+  window.abrirCorregirBilleteraJob = function(jobId, billeteraActual=''){
+    try{ if(typeof mostrarVista === 'function') mostrarVista('ajustes'); }catch(e){}
+    setTimeout(()=>{
+      const input = $('corregirJobBilleteraId');
+      const motivo = $('corregirJobBilleteraMotivo');
+      if(input) input.value = jobId || '';
+      fillSelect(billeteraActual || '');
+      if(motivo && !motivo.value) motivo.value = 'Correccion de billetera asignada al job';
+      showJobHint(jobId);
+      $('corregirJobBilleteraNueva')?.focus();
+    },120);
+    try{
+      Promise.allSettled([
+        (typeof cargarBilleteras === 'function') ? cargarBilleteras(false) : null,
+        (typeof cargarSaldosOperativos === 'function') ? cargarSaldosOperativos(true) : null
+      ]).then(()=>fillSelect(billeteraActual || ''));
+    }catch(e){}
+  };
+  window.corregirBilleteraJobPanel = async function(){
+    const jobId = Number($('corregirJobBilleteraId')?.value || 0);
+    const billeteraId = Number($('corregirJobBilleteraNueva')?.value || 0);
+    const motivo = String($('corregirJobBilleteraMotivo')?.value || '').trim();
+    const box = $('corregirJobBilleteraResultado');
+    if(!jobId || !billeteraId || !motivo){
+      if(box) box.innerHTML = '<div class="err-box">Job, billetera correcta y motivo son obligatorios.</div>';
+      return;
+    }
+    if(box) box.innerHTML = '<div class="alert-box">Corrigiendo billetera del job...</div>';
+    try{
+      const { data, error } = await supabaseClient.rpc('panel_operativo_corregir_billetera_job', {
+        p_session_token: token(),
+        p_worker_job_id: jobId,
+        p_billetera_nueva_id: billeteraId,
+        p_motivo: motivo,
+        p_operador: currentUser(),
+        p_pc_codigo: currentPc() || null
+      });
+      if(error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      if(box) box.innerHTML = `<div class="ok-box">${esc(row?.mensaje || 'Billetera corregida.')}</div>`;
+      try{ if(typeof cargarWorkerJobs === 'function') await cargarWorkerJobs(true); }catch(e){}
+      try{ if(typeof cargarSaldosOperativos === 'function') await cargarSaldosOperativos(true); }catch(e){}
+      try{ if(typeof renderCentroOperativo === 'function') renderCentroOperativo(); }catch(e){}
+      try{ if(typeof renderSelectsAjustes === 'function') renderSelectsAjustes(); }catch(e){}
+    }catch(e){
+      if(box) box.innerHTML = `<div class="err-box">${esc(e.message || e)}</div>`;
+    }
+  };
+  function decorateJobButtons(){
+    document.querySelectorAll('#opsColaUnificada .ops-main-table tbody tr').forEach(tr=>{
+      const actions = tr.querySelector('.ops-compact-actions');
+      if(!actions || actions.querySelector('.job-wallet-fix')) return;
+      const text = tr.innerText || '';
+      const m = text.match(/#\s*(\d+)/);
+      if(!m) return;
+      const btn = document.createElement('button');
+      btn.className = 'mini-btn yellow job-wallet-fix';
+      btn.type = 'button';
+      btn.textContent = 'Billetera';
+      btn.onclick = () => window.abrirCorregirBilleteraJob(m[1]);
+      actions.appendChild(btn);
+    });
+  }
+  const oldRenderSelects = window.renderSelectsAjustes;
+  window.renderSelectsAjustes = function(){
+    try{ if(typeof oldRenderSelects === 'function') oldRenderSelects.apply(this, arguments); }catch(e){}
+    fillSelect();
+  };
+  const oldRenderCentro = window.renderCentroOperativo;
+  if(typeof oldRenderCentro === 'function'){
+    window.renderCentroOperativo = function(){
+      const r = oldRenderCentro.apply(this, arguments);
+      setTimeout(decorateJobButtons, 80);
+      return r;
+    };
+  }
+  document.addEventListener('input', e=>{
+    if(e.target && e.target.id === 'corregirJobBilleteraId') showJobHint(e.target.value);
+  });
+  document.addEventListener('DOMContentLoaded', ()=>setTimeout(()=>{ fillSelect(); decorateJobButtons(); }, 1200));
+  setInterval(decorateJobButtons, 2500);
+})();
+</script>
+
+<script>
+/* ---------- Ajustes finales para formulario de correccion de billetera ---------- */
+(function(){
+  if(window.__NODO_FIX_CORREGIR_BILLETERA_FORM__) return;
+  window.__NODO_FIX_CORREGIR_BILLETERA_FORM__ = true;
+
+  const $ = id => document.getElementById(id);
+  const txt = v => String(v ?? '');
+  const esc = v => txt(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  function walletSources(){
+    const so = window.saldosOperativos || {};
+    const arr = [so.billeteras, window.billeteras, window.billeterasTodas];
+    const out = [];
+    const seen = new Set();
+    arr.forEach(src=>{
+      if(!Array.isArray(src)) return;
+      src.forEach(w=>{
+        const id = w?.id || w?.billetera_id || w?.ID_BILLETERA || w?.ID;
+        if(!id || seen.has(String(id))) return;
+        seen.add(String(id));
+        out.push(w);
+      });
+    });
+    if(out.length) return out;
+    const srcSel = $('manualWorkerBilleteraInicio') || $('ajusteBilleteraId') || $('transferBilleteraOrigen');
+    if(!srcSel) return [];
+    return Array.from(srcSel.options || []).filter(o=>o.value).map(o=>({id:o.value,nombre_visible:o.textContent}));
+  }
+
+  function walletId(w){ return txt(w?.id || w?.billetera_id || w?.ID_BILLETERA || w?.ID); }
+  function walletName(w){
+    const id = walletId(w);
+    return txt(w?.nombre_visible || w?.NOMBRE_VISIBLE || w?.BILLETERA_NOMBRE || w?.nombre || w?.NOMBRE || w?.alias || w?.ALIAS || ('#' + id));
+  }
+  function walletNameById(id){
+    const w = walletSources().find(x=>walletId(x) === txt(id));
+    return w ? walletName(w) : (id ? ('#' + id) : 'sin dato');
+  }
+  function jobWalletId(jobId){
+    const map = window.__NODO_JOB_WALLET_MAP__ || {};
+    const list = Array.isArray(window.workerJobs) ? window.workerJobs : [];
+    const j = list.find(x=>txt(x.id) === txt(jobId)) || {};
+    return txt(j.billetera_id || j.BILLETERA_ID || j.ID_BILLETERA || map[txt(jobId)] || '');
+  }
+  function fillCorrectionWalletSelect(selected){
+    const sel = $('corregirJobBilleteraNueva');
+    if(!sel) return;
+    const current = selected || sel.value;
+    const list = walletSources();
+    sel.innerHTML = '<option value="">Seleccionar billetera</option>' + list.map(w=>{
+      const id = walletId(w);
+      return id ? `<option value="${esc(id)}">${esc(walletName(w))}</option>` : '';
+    }).join('');
+    if(current) sel.value = current;
+  }
+  function hydrateCorrectionForm(){
+    const input = $('corregirJobBilleteraId');
+    if(!input || !input.value) return;
+    const jobId = input.value;
+    const wid = jobWalletId(jobId);
+    fillCorrectionWalletSelect(wid);
+    const box = $('corregirJobBilleteraResultado');
+    const j = (Array.isArray(window.workerJobs) ? window.workerJobs : []).find(x=>txt(x.id) === txt(jobId)) || {};
+    if(box && wid){
+      box.innerHTML = `<div class="alert-box">Job #${esc(jobId)} - ${esc(j.usuario || '-')} - ${esc(j.tipo_accion || '-')} - billetera actual: ${esc(walletNameById(wid))}</div>`;
+    }
+  }
+  function hideOldEmptyMovementNotices(){
+    document.querySelectorAll('.alert-box').forEach(el=>{
+      const t = el.textContent || '';
+      if(t.includes('Sin movimientos visibles')) el.style.display = 'none';
+    });
+  }
+
+  const oldOpen = window.abrirCorregirBilleteraJob;
+  window.abrirCorregirBilleteraJob = function(jobId, billeteraActual=''){
+    const r = typeof oldOpen === 'function' ? oldOpen.apply(this, arguments) : null;
+    const run = ()=>hydrateCorrectionForm();
+    setTimeout(run, 120);
+    setTimeout(run, 600);
+    setTimeout(run, 1400);
+    return r;
+  };
+
+  document.addEventListener('input', e=>{
+    if(e.target?.id === 'corregirJobBilleteraId') setTimeout(hydrateCorrectionForm, 80);
+  }, true);
+  setInterval(()=>{
+    hydrateCorrectionForm();
+    hideOldEmptyMovementNotices();
+  }, 1500);
+})();
+</script>
+
+<script>
+/* ---------- Hidrata billeteras visibles en la cola operativa ---------- */
+(function(){
+  if(window.__NODO_FIX_COLA_WALLET_CELLS__) return;
+  window.__NODO_FIX_COLA_WALLET_CELLS__ = true;
+
+  const text = v => String(v ?? '');
+  const escText = v => text(v);
+
+  function walletSources(){
+    const so = window.saldosOperativos || {};
+    return [so.billeteras, window.billeteras, window.billeterasTodas]
+      .filter(Array.isArray)
+      .flat();
+  }
+  function walletId(w){ return text(w?.id || w?.billetera_id || w?.ID_BILLETERA || w?.ID); }
+  function walletNameById(id){
+    const sid = text(id);
+    const w = walletSources().find(x => walletId(x) === sid);
+    return w ? text(w.nombre_visible || w.NOMBRE_VISIBLE || w.BILLETERA_NOMBRE || w.nombre || w.NOMBRE || w.alias || w.ALIAS || ('#' + sid)) : '';
+  }
+  function jobWalletId(jobId){
+    const sid = text(jobId);
+    const map = window.__NODO_JOB_WALLET_MAP__ || {};
+    if(map[sid]) return text(map[sid]);
+    const jobs = Array.isArray(window.workerJobs) ? window.workerJobs : [];
+    const j = jobs.find(x => text(x.id) === sid);
+    return text(j?.billetera_id || j?.BILLETERA_ID || j?.ID_BILLETERA || '');
+  }
+  function hydrateColaWalletCells(){
+    const rows = document.querySelectorAll('#opsColaUnificada .ops-main-table tbody tr');
+    if(!rows.length) return;
+    rows.forEach(tr => {
+      const cells = tr.querySelectorAll('td');
+      if(cells.length < 4) return;
+      const m = (tr.innerText || '').match(/#\s*(\d+)/);
+      if(!m) return;
+      const wid = jobWalletId(m[1]);
+      const name = walletNameById(wid);
+      if(!name) return;
+      const cell = cells[3];
+      if((cell.textContent || '').trim() === name) return;
+      cell.textContent = name;
+    });
+  }
+  const oldRenderCentro = window.renderCentroOperativo;
+  if(typeof oldRenderCentro === 'function'){
+    window.renderCentroOperativo = function(){
+      const r = oldRenderCentro.apply(this, arguments);
+      setTimeout(hydrateColaWalletCells, 80);
+      setTimeout(hydrateColaWalletCells, 500);
+      return r;
+    };
+    try{ renderCentroOperativo = window.renderCentroOperativo; }catch(e){}
+  }
+  setInterval(hydrateColaWalletCells, 1200);
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(hydrateColaWalletCells,1200));
+})();
+</script>
+
+<script>
+/* ---------- Historial de agente CSV + alerta de retiros 24 hs + movimientos ordenados ---------- */
+(function(){
+  if(window.__NODO_HISTORIAL_AGENTE_V1__) return;
+  window.__NODO_HISTORIAL_AGENTE_V1__ = true;
+
+  const $ = id => document.getElementById(id);
+  const txt = v => String(v ?? '');
+  const esc = v => txt(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const attr = esc;
+  const moneyFmt = n => Number(n || 0).toLocaleString('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0});
+  const getToken = () => {
+    try{ if(typeof requireSessionToken === 'function') return requireSessionToken(); }catch(e){}
+    return window.panelSessionToken || localStorage.getItem('nodo_panel_session_token') || '';
+  };
+  const pcActual = () => {
+    try{ if(typeof pc === 'function') return pc(); }catch(e){}
+    return window.pcOperativa || '';
+  };
+  const valOf = id => ($(id)?.value || '').trim();
+  const parseMontoLocal = v => {
+    try{ if(typeof parseMonto === 'function') return parseMonto(v); }catch(e){}
+    const s=txt(v).replace(/\$/g,'').replace(/\s/g,'').replace(/\./g,'').replace(',', '.');
+    const n=Number(s);
+    return Number.isFinite(n)?n:NaN;
+  };
+  const notifyLocal = (msg, color='blue') => {
+    try{ if(typeof notify === 'function') return notify(msg,color); }catch(e){}
+    try{ if(typeof toast === 'function') return toast(msg,color); }catch(e){}
+    console.log(msg);
+  };
+
+  function splitCsvLine(line){
+    const out=[]; let cur='', q=false;
+    for(let i=0;i<line.length;i++){
+      const ch=line[i], next=line[i+1];
+      if(ch==='"' && q && next==='"'){cur+='"'; i++; continue;}
+      if(ch==='"'){q=!q; continue;}
+      if(ch===',' && !q){out.push(cur.trim()); cur=''; continue;}
+      cur+=ch;
+    }
+    out.push(cur.trim());
+    return out;
+  }
+
+  function parseCsvAgente(text){
+    const lines=txt(text).replace(/^\uFEFF/,'').split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+    const clean=lines.filter(l=>!/^sep\s*=/i.test(l));
+    if(!clean.length) return [];
+    const header=splitCsvLine(clean[0]).map(h=>h.toLowerCase());
+    const idx = name => header.findIndex(h=>h===name || h.normalize('NFD').replace(/[\u0300-\u036f]/g,'')===name);
+    const iFecha=idx('fecha'), iEstado=idx('estado'), iCantidad=idx('cantidad'), iTipo=idx('tipo'), iAlias=idx('alias'), iBalance=idx('balance');
+    if([iFecha,iCantidad,iTipo,iAlias].some(i=>i<0)) throw new Error('CSV invalido. Esperado: Fecha,Estado,Cantidad,Tipo,Alias,Balance');
+    return clean.slice(1).map(line=>{
+      const c=splitCsvLine(line);
+      return {
+        fecha:c[iFecha],
+        estado:iEstado>=0?c[iEstado]:'',
+        cantidad:iCantidad>=0?c[iCantidad]:'',
+        tipo:iTipo>=0?c[iTipo]:'',
+        alias:iAlias>=0?c[iAlias]:'',
+        balance:iBalance>=0?c[iBalance]:''
+      };
+    }).filter(r=>r.fecha && r.alias);
+  }
+
+  async function consultarRetirosRecientes(usuario, horas=24){
+    const token=getToken();
+    if(!token || !usuario) return [];
+    const {data,error}=await supabaseClient.rpc('panel_usuario_retiros_recientes',{
+      p_session_token:token,
+      p_pc_codigo:pcActual(),
+      p_usuario:usuario,
+      p_horas:horas
+    });
+    if(error) throw error;
+    return Array.isArray(data)?data:[];
+  }
+
+  function ensureRetiroAlertBox(){
+    let box=$('nodoRetiro24Alert');
+    if(box) return box;
+    const quick=$('manualWorkerResultadoInicio') || $('opsQuickTop');
+    if(!quick) return null;
+    box=document.createElement('div');
+    box.id='nodoRetiro24Alert';
+    box.style.marginTop='8px';
+    if(quick.id==='manualWorkerResultadoInicio') quick.parentNode.insertBefore(box, quick);
+    else quick.appendChild(box);
+    return box;
+  }
+
+  let checkTimer=null;
+  async function previewRetiro24(){
+    clearTimeout(checkTimer);
+    checkTimer=setTimeout(async()=>{
+      const usuario=valOf('manualWorkerUsuarioInicio');
+      const monto=parseMontoLocal(valOf('manualWorkerMontoInicio'));
+      const box=ensureRetiroAlertBox();
+      if(!box) return;
+      if(!usuario || !(monto<0)){ box.innerHTML=''; return; }
+      box.innerHTML='<div class="alert-box">Consultando historial de retiros 24 hs...</div>';
+      try{
+        const rows=await consultarRetirosRecientes(usuario,24);
+        if(!rows.length){ box.innerHTML='<div class="ok-box">Sin retiros importados para este usuario en las ultimas 24 hs.</div>'; return; }
+        box.innerHTML=`<div class="err-box"><b>Atencion:</b> ${esc(usuario)} ya registra ${rows.length} retiro/s en ultimas 24 hs.<br>${rows.slice(0,3).map(r=>`${esc(new Date(r.fecha).toLocaleString('es-AR'))} · ${moneyFmt(r.cantidad)} · ${esc(r.tipo)}`).join('<br>')}</div>`;
+      }catch(e){
+        box.innerHTML=`<div class="alert-box">No pude consultar historial de Agente: ${esc(e.message||e)}</div>`;
+      }
+    },450);
+  }
+
+  document.addEventListener('input', e=>{
+    if(e.target && ['manualWorkerUsuarioInicio','manualWorkerMontoInicio'].includes(e.target.id)) previewRetiro24();
+  });
+
+  const oldCrearRapida = window.crearWorkerJobManualInicio;
+  window.crearWorkerJobManualInicio = async function(){
+    const usuario=valOf('manualWorkerUsuarioInicio');
+    const monto=parseMontoLocal(valOf('manualWorkerMontoInicio'));
+    if(usuario && monto<0){
+      try{
+        const rows=await consultarRetirosRecientes(usuario,24);
+        if(rows.length){
+          const msg=`${usuario} ya registra ${rows.length} retiro/s importado/s en las ultimas 24 hs. ¿Enviar retiro igual?`;
+          if(!confirm(msg)) return;
+        }
+      }catch(e){
+        if(!confirm('No pude consultar historial de retiros. ¿Enviar igual?')) return;
+      }
+    }
+    return oldCrearRapida.apply(this, arguments);
+  };
+
+  function walletOptionsHtml(){
+    const src = window.saldosOperativos?.billeteras || window.billeteras || window.billeterasTodas || [];
+    return '<option value="">Todas las billeteras</option>' + (Array.isArray(src)?src:[]).map(b=>{
+      const id=b.id||b.billetera_id||b.ID_BILLETERA||b.ID;
+      const name=b.nombre_visible||b.NOMBRE_VISIBLE||b.BILLETERA_NOMBRE||b.nombre||('Billetera #'+id);
+      return id?`<option value="${attr(id)}">${esc(name)}</option>`:'';
+    }).join('');
+  }
+
+  function ensureAjustesExtras(){
+    const grid=document.querySelector('#viewAjustes .ops-grid');
+    if(!grid || $('nodoHistorialAgentePanel')) return;
+    const wrap=document.createElement('div');
+    wrap.className='ops-panel';
+    wrap.id='nodoHistorialAgentePanel';
+    wrap.innerHTML=`
+      <div class="ops-panel-title">Historial Agente CSV</div>
+      <div class="small" style="margin-bottom:10px">Importa operaciones del Agente para alertar retiros repetidos. No modifica saldos ni jobs.</div>
+      <label>Archivo CSV</label><input id="agenteCsvFile" type="file" accept=".csv,text/csv">
+      <label>Fuente / mes</label><input id="agenteCsvFuente" placeholder="ej: agente_octubre_2025">
+      <button class="btn btn-primary" onclick="nodoImportarCsvAgente()">Importar CSV</button>
+      <div id="agenteCsvResultado" style="margin-top:12px"></div>`;
+    grid.prepend(wrap);
+
+    const mov=document.createElement('div');
+    mov.className='ops-panel';
+    mov.id='nodoMovimientosOrdenadosPanel';
+    mov.innerHTML=`
+      <div class="ops-panel-title">Movimientos de billetera ordenados</div>
+      <div class="small" style="margin-bottom:10px">Vista auditada por fecha: jobs, ajustes, transferencias y correcciones.</div>
+      <label>Billetera</label><select id="movOrdenadosBilletera"></select>
+      <button class="btn btn-blue" onclick="nodoCargarMovimientosOrdenados()">Ver movimientos</button>
+      <div id="movOrdenadosResultado" style="margin-top:12px"></div>`;
+    grid.prepend(mov);
+    setTimeout(()=>{ const s=$('movOrdenadosBilletera'); if(s) s.innerHTML=walletOptionsHtml(); },200);
+  }
+
+  window.nodoImportarCsvAgente = async function(){
+    const file=$('agenteCsvFile')?.files?.[0];
+    const out='agenteCsvResultado';
+    if(!file){ if($(out)) $(out).innerHTML='<div class="err-box">Selecciona un CSV.</div>'; return; }
+    try{
+      const text=await file.text();
+      const rows=parseCsvAgente(text);
+      if(!rows.length) throw new Error('No encontre filas validas en el CSV.');
+      if($(out)) $(out).innerHTML=`<div class="alert-box">Importando ${rows.length} operaciones...</div>`;
+      const {data,error}=await supabaseClient.rpc('admin_importar_operaciones_agente',{
+        p_session_token:getToken(),
+        p_pc_codigo:pcActual(),
+        p_operaciones:rows,
+        p_fuente:valOf('agenteCsvFuente') || file.name
+      });
+      if(error) throw error;
+      if($(out)) $(out).innerHTML=`<div class="ok-box">Importadas: <b>${esc(data?.importados ?? 0)}</b>. Duplicadas omitidas: <b>${esc(data?.omitidos_duplicados ?? 0)}</b>.</div>`;
+      notifyLocal('CSV de Agente importado','green');
+    }catch(e){
+      if($(out)) $(out).innerHTML=`<div class="err-box">${esc(e.message||e)}</div>`;
+    }
+  };
+
+  window.nodoCargarMovimientosOrdenados = async function(){
+    const out=$('movOrdenadosResultado');
+    if(out) out.innerHTML='<div class="alert-box">Cargando movimientos...</div>';
+    try{
+      const raw=valOf('movOrdenadosBilletera');
+      const {data,error}=await supabaseClient.rpc('panel_operativo_get_billetera_movimientos_ordenados',{
+        p_session_token:getToken(),
+        p_pc_codigo:pcActual(),
+        p_billetera_id:raw?Number(raw):null,
+        p_limit:300
+      });
+      if(error) throw error;
+      const rows=Array.isArray(data)?data:[];
+      if(!rows.length){ if(out) out.innerHTML='<div class="alert-box">Sin movimientos para mostrar.</div>'; return; }
+      const html=`<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Billetera</th><th>Tipo</th><th>Usuario</th><th>Monto</th><th>Origen</th><th>Ref</th><th>Motivo</th></tr></thead><tbody>${rows.map(r=>`<tr>
+        <td>${esc(new Date(r.created_at).toLocaleString('es-AR'))}</td>
+        <td>${esc(r.billetera_nombre||'#'+r.billetera_id)}</td>
+        <td>${esc(r.tipo_movimiento||'-')}</td>
+        <td>${esc(r.usuario||'-')}</td>
+        <td>${r.signo<0?'-':'+'} ${moneyFmt(r.monto)}</td>
+        <td>${esc(r.origen||'-')}</td>
+        <td>${r.worker_job_id?'Job #'+esc(r.worker_job_id):r.solicitud_id?'Sol #'+esc(r.solicitud_id):'-'}</td>
+        <td>${esc(r.motivo||'-')}</td>
+      </tr>`).join('')}</tbody></table></div>`;
+      if(out) out.innerHTML=html;
+    }catch(e){
+      if(out) out.innerHTML=`<div class="err-box">${esc(e.message||e)}</div>`;
+    }
+  };
+
+  const oldMostrarVista = window.mostrarVista;
+  if(typeof oldMostrarVista === 'function'){
+    window.mostrarVista = function(v){
+      const r=oldMostrarVista.apply(this, arguments);
+      if(v==='ajustes') setTimeout(ensureAjustesExtras,100);
+      return r;
+    };
+  }
+  const oldRenderSelectsAjustes = window.renderSelectsAjustes;
+  window.renderSelectsAjustes = function(){
+    try{ if(typeof oldRenderSelectsAjustes === 'function') oldRenderSelectsAjustes.apply(this, arguments); }catch(e){}
+    ensureAjustesExtras();
+    const s=$('movOrdenadosBilletera'); if(s) s.innerHTML=walletOptionsHtml();
+  };
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(()=>{ ensureAjustesExtras(); previewRetiro24(); },1200));
+})();
+</script>
 </body>
 </html>
